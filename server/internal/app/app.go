@@ -115,7 +115,7 @@ func Run() error {
 		log.Print("gRPC TLS certs are not set; nodes must only be used on a trusted network for development")
 		grpcSrv = grpc.NewServer()
 	}
-	judgev1.RegisterJudgeControlServer(grpcSrv, &judgegrpc.Server{Judging: jg, Clock: clk})
+	judgev1.RegisterJudgeControlServer(grpcSrv, &judgegrpc.Server{Judging: jg, Hub: jg.Hub, Clock: clk})
 
 	runCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()

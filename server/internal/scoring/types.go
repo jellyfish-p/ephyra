@@ -64,6 +64,7 @@ type ProblemScore struct {
 	FailedAttemptsBeforeAC int
 	EffectiveSubmissionID  uuid.UUID
 	Pending                bool
+	ReceivedAt             time.Time `json:"-"`
 }
 
 type Standing struct {

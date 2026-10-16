@@ -36,7 +36,7 @@ func (m *Module) Standings(ctx context.Context, p access.Principal, contestID uu
 	view := Visible(vis)
 	if view.ShowOnBoard || aud == access.AudienceContestAdmin || aud == access.AudienceOrgAdmin {
 		if domain.Rule(c.Rule) == domain.RuleACM && acmFrozen(vis) && aud != access.AudienceContestAdmin && aud != access.AudienceOrgAdmin {
-			return m.filterFrozen(c, vis, aud, rows), nil
+			return FilterFrozenStandings(vis, m.viewerEntrant(ctx, p, contestID), rows), nil
 		}
 		return rows, nil
 	}
@@ -378,47 +378,23 @@ func (m *Module) audienceForSubmission(ctx context.Context, p access.Principal, 
 	return aud
 }
 
-func (m *Module) onlySelf(ctx context.Context, p access.Principal, contestID uuid.UUID, rows []Standing) []Standing {
+func (m *Module) viewerEntrant(ctx context.Context, p access.Principal, contestID uuid.UUID) uuid.UUID {
 	var em persist.EntrantMember
 	if err := m.DB.WithContext(ctx).Where("contest_id = ? AND account_id = ?", contestID, p.AccountID).First(&em).Error; err != nil {
+		return uuid.Nil
+	}
+	return em.EntrantID
+}
+
+func (m *Module) onlySelf(ctx context.Context, p access.Principal, contestID uuid.UUID, rows []Standing) []Standing {
+	id := m.viewerEntrant(ctx, p, contestID)
+	if id == uuid.Nil {
 		return nil
 	}
 	for _, r := range rows {
-		if r.EntrantID == em.EntrantID {
+		if r.EntrantID == id {
 			return []Standing{r}
 		}
 	}
 	return nil
-}
-
-func (m *Module) filterFrozen(c persist.Contest, vis VisibilityInput, aud access.Audience, rows []Standing) []Standing {
-	freezeAt := c.EndsAt.Add(-vis.FreezeFor)
-	out := append([]Standing(nil), rows...)
-	for i := range out {
-		out[i].Problems = append([]ProblemScore(nil), rows[i].Problems...)
-		out[i].Solved = 0
-		out[i].PenaltyMinutes = 0
-		for j := range out[i].Problems {
-			ps := &out[i].Problems[j]
-			if ps.EffectiveSubmissionID == uuid.Nil {
-				continue
-			}
-			var s persist.Submission
-			if err := m.DB.First(&s, "id = ?", ps.EffectiveSubmissionID).Error; err != nil {
-				continue
-			}
-			if !FilterBoard(vis, !s.ReceivedAt.Before(freezeAt), aud) {
-				ps.Solved = false
-				ps.Score = exact.Zero()
-				ps.PenaltyMinutes = 0
-				ps.EffectiveSubmissionID = uuid.Nil
-			}
-			if ps.Solved {
-				out[i].Solved++
-				out[i].PenaltyMinutes += ps.PenaltyMinutes
-			}
-		}
-	}
-	rank(domain.RuleACM, out)
-	return out
 }

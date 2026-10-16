@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jellyfish-p/ephyra/server/internal/access"
 	"github.com/jellyfish-p/ephyra/server/internal/domain"
+	"github.com/jellyfish-p/ephyra/server/internal/exact"
 )
 
 type VisibilityInput struct {
@@ -147,6 +148,42 @@ func sourceVisible(in VisibilityInput, admin, self bool) bool {
 		return true
 	}
 	return false
+}
+
+// FilterFrozenStandings hides other entrants' post-freeze ACM solves and re-ranks.
+// viewerEntrant is the caller's team; vis.Audience is the caller, not each row.
+func FilterFrozenStandings(vis VisibilityInput, viewerEntrant uuid.UUID, rows []Standing) []Standing {
+	freezeAt := vis.EndsAt.Add(-vis.FreezeFor)
+	out := append([]Standing(nil), rows...)
+	for i := range out {
+		out[i].Problems = append([]ProblemScore(nil), rows[i].Problems...)
+		out[i].Solved = 0
+		out[i].PenaltyMinutes = 0
+		rowAud := vis.Audience
+		if (rowAud == access.AudienceSelf || rowAud == access.AudienceTeammate) && out[i].EntrantID != viewerEntrant {
+			rowAud = access.AudienceOtherContestant
+		}
+		for j := range out[i].Problems {
+			ps := &out[i].Problems[j]
+			if ps.EffectiveSubmissionID == uuid.Nil {
+				continue
+			}
+			afterFreeze := !ps.ReceivedAt.Before(freezeAt)
+			if !FilterBoard(vis, afterFreeze, rowAud) {
+				ps.Solved = false
+				ps.Score = exact.Zero()
+				ps.PenaltyMinutes = 0
+				ps.EffectiveSubmissionID = uuid.Nil
+				ps.ReceivedAt = time.Time{}
+			}
+			if ps.Solved {
+				out[i].Solved++
+				out[i].PenaltyMinutes += ps.PenaltyMinutes
+			}
+		}
+	}
+	rank(domain.RuleACM, out)
+	return out
 }
 
 // FilterBoard hides others' post-freeze ACM solves from public standings.

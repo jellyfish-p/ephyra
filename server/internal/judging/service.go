@@ -14,6 +14,7 @@ import (
 	"github.com/jellyfish-p/ephyra/server/internal/clock"
 	"github.com/jellyfish-p/ephyra/server/internal/domain"
 	"github.com/jellyfish-p/ephyra/server/internal/exact"
+	"github.com/jellyfish-p/ephyra/server/internal/identity"
 	"github.com/jellyfish-p/ephyra/server/internal/objectstore"
 	"github.com/jellyfish-p/ephyra/server/internal/persist"
 	"github.com/jellyfish-p/ephyra/server/internal/problem"
@@ -474,16 +475,11 @@ func (m *Module) authorizePool(ctx context.Context, p access.Principal, pool per
 
 func (m *Module) requireManage(ctx context.Context, p access.Principal, orgID uuid.UUID) error {
 	if p.SiteAdmin {
-		return nil
+		return identity.AllowManageOrg(p, false, "")
 	}
 	var mem persist.OrganizationMembership
-	if err := m.DB.WithContext(ctx).Where("organization_id = ? AND account_id = ?", orgID, p.AccountID).First(&mem).Error; err != nil {
-		return apperr.New(apperr.Forbidden, "not an organization member")
-	}
-	if !domain.OrgRole(mem.Role).CanManageOrg() {
-		return apperr.New(apperr.Forbidden, "insufficient organization role")
-	}
-	return nil
+	err := m.DB.WithContext(ctx).Where("organization_id = ? AND account_id = ?", orgID, p.AccountID).First(&mem).Error
+	return identity.AllowManageOrg(p, err == nil, domain.OrgRole(mem.Role))
 }
 
 func (m *Module) failNodeAttempts(tx *gorm.DB, nodeID uuid.UUID, reason string) error {

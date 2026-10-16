@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jellyfish-p/ephyra/server/internal/access"
 	"github.com/jellyfish-p/ephyra/server/internal/domain"
+	"github.com/jellyfish-p/ephyra/server/internal/exact"
 )
 
 func TestOIHidesTestsDuringContest(t *testing.T) {
@@ -71,6 +72,42 @@ func TestACMFreezeHidesOthers(t *testing.T) {
 	}
 	if EmitFields(v).Score || EmitFields(v).Verdict {
 		t.Fatal("freeze payload must omit others' score fields")
+	}
+}
+
+func TestFilterFrozenStandingsHidesOthersAndReranks(t *testing.T) {
+	now := time.Unix(1000, 0)
+	vis := VisibilityInput{
+		Rule: domain.RuleACM, Phase: domain.PhaseRunning, Now: now,
+		EndsAt: now.Add(10 * time.Minute), FreezeFor: 30 * time.Minute,
+		Audience: access.AudienceSelf,
+	}
+	freezeAt := vis.EndsAt.Add(-vis.FreezeFor)
+	other := uuid.New()
+	self := uuid.New()
+	pid := uuid.New()
+	rows := []Standing{
+		{EntrantID: other, Solved: 1, PenaltyMinutes: 20, Problems: []ProblemScore{{
+			ProblemID: pid, Solved: true, Score: exact.FromInt(1), PenaltyMinutes: 20,
+			EffectiveSubmissionID: uuid.New(), ReceivedAt: freezeAt.Add(time.Minute),
+		}}},
+		{EntrantID: self, Solved: 1, PenaltyMinutes: 5, Problems: []ProblemScore{{
+			ProblemID: pid, Solved: true, Score: exact.FromInt(1), PenaltyMinutes: 5,
+			EffectiveSubmissionID: uuid.New(), ReceivedAt: freezeAt.Add(time.Minute),
+		}}},
+	}
+	got := FilterFrozenStandings(vis, self, rows)
+	for _, r := range got {
+		switch r.EntrantID {
+		case other:
+			if r.Solved != 0 || r.Problems[0].Solved {
+				t.Fatalf("contestant must not see others' post-freeze AC: %+v", r)
+			}
+		case self:
+			if r.Solved != 1 {
+				t.Fatalf("contestant still sees own post-freeze AC: %+v", r)
+			}
+		}
 	}
 }
 

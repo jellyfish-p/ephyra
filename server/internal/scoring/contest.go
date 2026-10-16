@@ -91,6 +91,7 @@ func scoreACM(in ContestInput, p Problem, subs []Submission) ProblemScore {
 			ps.Solved = true
 			ps.Score = exact.FromInt(1)
 			ps.EffectiveSubmissionID = s.ID
+			ps.ReceivedAt = s.ReceivedAt
 			ps.FailedAttemptsBeforeAC = fails
 			elapsed := s.ReceivedAt.Sub(in.Start)
 			if elapsed < 0 {

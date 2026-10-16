@@ -42,8 +42,7 @@ func (s *Server) nodeHub() *judging.Hub {
 		s.Hub = m.Hub
 		return s.Hub
 	}
-	s.Hub = judging.NewHub()
-	return s.Hub
+	panic("judgegrpc: Hub is required so Connect and Schedule share one connection table")
 }
 
 func (s *Server) ackActive(stream judgev1.JudgeControl_ConnectServer, nodeID uuid.UUID, active []string) {
