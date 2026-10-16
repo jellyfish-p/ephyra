@@ -15,7 +15,10 @@ func New() *Limiter {
 }
 
 func (l *Limiter) Allow(key string, n int, window time.Duration) bool {
-	now := time.Now()
+	return l.allow(key, n, window, time.Now())
+}
+
+func (l *Limiter) allow(key string, n int, window time.Duration, now time.Time) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	cut := now.Add(-window)

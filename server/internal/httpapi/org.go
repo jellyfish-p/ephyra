@@ -11,6 +11,9 @@ func (a *API) orgRoutes(r *gin.Engine) {
 	r.POST("/api/organizations", a.createOrg)
 	r.GET("/api/organizations/:id", a.getOrg)
 	r.POST("/api/organizations/:id/join", a.joinOrg)
+	r.GET("/api/organizations/:id/members", a.listMembers)
+	r.GET("/api/organizations/:id/membership", a.myMembership)
+	r.GET("/api/organizations/:id/join-requests", a.listJoinRequests)
 	r.POST("/api/organizations/:orgId/join-requests/:requestId/decision", a.decideJoin)
 }
 
@@ -63,6 +66,59 @@ func (a *API) joinOrg(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusAccepted, gin.H{"ok": true})
+}
+
+func (a *API) listMembers(c *gin.Context) {
+	p, ok := requireUser(c)
+	if !ok {
+		return
+	}
+	id, ok := parseUUID(c, "id")
+	if !ok {
+		return
+	}
+	members, err := a.Identity.ListMembers(c.Request.Context(), p, id)
+	if err != nil {
+		writeErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"members": members})
+}
+
+func (a *API) myMembership(c *gin.Context) {
+	p, ok := requireUser(c)
+	if !ok {
+		return
+	}
+	id, ok := parseUUID(c, "id")
+	if !ok {
+		return
+	}
+	mem, err := a.Identity.MyMembership(c.Request.Context(), p, id)
+	if err != nil {
+		writeErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"organization_id": mem.OrganizationID, "member": mem.Member, "role": mem.Role,
+	})
+}
+
+func (a *API) listJoinRequests(c *gin.Context) {
+	p, ok := requireUser(c)
+	if !ok {
+		return
+	}
+	id, ok := parseUUID(c, "id")
+	if !ok {
+		return
+	}
+	reqs, err := a.Identity.ListJoinRequests(c.Request.Context(), p, id)
+	if err != nil {
+		writeErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"join_requests": reqs})
 }
 
 func (a *API) decideJoin(c *gin.Context) {

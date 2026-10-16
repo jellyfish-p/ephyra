@@ -192,16 +192,15 @@ func (m *Module) ApplyToJoin(ctx context.Context, p access.Principal, orgID uuid
 	}
 	now := m.now()
 	return m.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var org persist.Organization
-		if err := tx.First(&org, "id = ?", orgID).Error; err != nil {
-			return apperr.New(apperr.NotFound, "organization not found")
+		org, err := m.loadOrg(tx, orgID)
+		if err != nil {
+			return err
 		}
-		var mem persist.OrganizationMembership
-		if err := tx.Where("organization_id = ? AND account_id = ?", orgID, p.AccountID).First(&mem).Error; err == nil {
+		if _, ok := m.membershipOf(tx, p.AccountID, org.ID); ok {
 			return apperr.New(apperr.Conflict, "already a member")
 		}
 		req := persist.OrganizationJoinRequest{
-			ID: uuid.New(), OrganizationID: orgID, AccountID: p.AccountID,
+			ID: uuid.New(), OrganizationID: org.ID, AccountID: p.AccountID,
 			Status: "pending", CreatedAt: now,
 		}
 		if err := tx.Create(&req).Error; err != nil {
@@ -220,6 +219,9 @@ func (m *Module) DecideJoin(ctx context.Context, p access.Principal, requestID u
 		var req persist.OrganizationJoinRequest
 		if err := tx.First(&req, "id = ?", requestID).Error; err != nil {
 			return apperr.New(apperr.NotFound, "request not found")
+		}
+		if _, err := m.loadOrg(tx, req.OrganizationID); err != nil {
+			return err
 		}
 		if err := m.requireOrgManage(tx, p, req.OrganizationID); err != nil {
 			return err
@@ -248,39 +250,112 @@ func (m *Module) DecideJoin(ctx context.Context, p access.Principal, requestID u
 }
 
 func (m *Module) Membership(ctx context.Context, accountID, orgID uuid.UUID) (domain.OrgRole, error) {
-	var mem persist.OrganizationMembership
-	if err := m.DB.WithContext(ctx).Where("organization_id = ? AND account_id = ?", orgID, accountID).First(&mem).Error; err != nil {
+	var org persist.Organization
+	if err := m.DB.WithContext(ctx).First(&org, "id = ?", orgID).Error; err != nil {
+		return "", apperr.New(apperr.NotFound, "organization not found")
+	}
+	mem, ok := m.membershipOf(m.DB.WithContext(ctx), accountID, org.ID)
+	if !ok {
 		return "", apperr.New(apperr.Forbidden, "not an organization member")
 	}
 	return domain.OrgRole(mem.Role), nil
 }
 
+func (m *Module) MyMembership(ctx context.Context, p access.Principal, orgID uuid.UUID) (Membership, error) {
+	if p.Zero() {
+		return Membership{}, apperr.New(apperr.Unauthorized, "not signed in")
+	}
+	org, err := m.loadOrg(m.DB.WithContext(ctx), orgID)
+	if err != nil {
+		return Membership{}, err
+	}
+	mem, ok := m.membershipOf(m.DB.WithContext(ctx), p.AccountID, org.ID)
+	if !ok {
+		return Membership{OrganizationID: org.ID, Member: false}, nil
+	}
+	return Membership{OrganizationID: org.ID, Member: true, Role: mem.Role}, nil
+}
+
+func (m *Module) ListMembers(ctx context.Context, p access.Principal, orgID uuid.UUID) ([]Member, error) {
+	org, err := m.loadOrg(m.DB.WithContext(ctx), orgID)
+	if err != nil {
+		return nil, err
+	}
+	_, member := m.membershipOf(m.DB.WithContext(ctx), p.AccountID, org.ID)
+	if err := AllowViewOrgRoster(p, member); err != nil {
+		return nil, err
+	}
+	var rows []Member
+	err = m.DB.WithContext(ctx).Model(&persist.OrganizationMembership{}).
+		Select("organization_memberships.account_id, accounts.display_name, organization_memberships.role").
+		Joins("JOIN accounts ON accounts.id = organization_memberships.account_id").
+		Where("organization_memberships.organization_id = ?", org.ID).
+		Order("organization_memberships.created_at").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	if rows == nil {
+		rows = []Member{}
+	}
+	return rows, nil
+}
+
+func (m *Module) ListJoinRequests(ctx context.Context, p access.Principal, orgID uuid.UUID) ([]JoinRequest, error) {
+	org, err := m.loadOrg(m.DB.WithContext(ctx), orgID)
+	if err != nil {
+		return nil, err
+	}
+	if err := m.requireOrgManage(m.DB.WithContext(ctx), p, org.ID); err != nil {
+		return nil, err
+	}
+	var rows []JoinRequest
+	err = m.DB.WithContext(ctx).Model(&persist.OrganizationJoinRequest{}).
+		Select("organization_join_requests.id, organization_join_requests.account_id, accounts.display_name, organization_join_requests.status, organization_join_requests.created_at").
+		Joins("JOIN accounts ON accounts.id = organization_join_requests.account_id").
+		Where("organization_join_requests.organization_id = ? AND organization_join_requests.status = ?", org.ID, "pending").
+		Order("organization_join_requests.created_at").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	if rows == nil {
+		rows = []JoinRequest{}
+	}
+	return rows, nil
+}
+
 func (m *Module) CanManageOrg(ctx context.Context, p access.Principal, orgID uuid.UUID) error {
 	return m.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		return m.requireOrgManage(tx, p, orgID)
+		org, err := m.loadOrg(tx, orgID)
+		if err != nil {
+			return err
+		}
+		return m.requireOrgManage(tx, p, org.ID)
 	})
 }
 
 func (m *Module) requireOrgManage(tx *gorm.DB, p access.Principal, orgID uuid.UUID) error {
-	if p.SiteAdmin {
-		return nil
-	}
-	var mem persist.OrganizationMembership
-	if err := tx.Where("organization_id = ? AND account_id = ?", orgID, p.AccountID).First(&mem).Error; err != nil {
-		return apperr.New(apperr.Forbidden, "not an organization member")
-	}
-	if !domain.OrgRole(mem.Role).CanManageOrg() {
-		return apperr.New(apperr.Forbidden, "insufficient organization role")
-	}
-	return nil
+	mem, ok := m.membershipOf(tx, p.AccountID, orgID)
+	return AllowManageOrg(p, ok, domain.OrgRole(mem.Role))
 }
 
-func (m *Module) Organization(ctx context.Context, id uuid.UUID) (persist.Organization, error) {
+func (m *Module) loadOrg(tx *gorm.DB, id uuid.UUID) (persist.Organization, error) {
 	var org persist.Organization
-	if err := m.DB.WithContext(ctx).First(&org, "id = ?", id).Error; err != nil {
+	if err := tx.First(&org, "id = ?", id).Error; err != nil {
 		return persist.Organization{}, apperr.New(apperr.NotFound, "organization not found")
 	}
 	return org, nil
+}
+
+func (m *Module) membershipOf(tx *gorm.DB, accountID, orgID uuid.UUID) (persist.OrganizationMembership, bool) {
+	var mem persist.OrganizationMembership
+	err := tx.Where("organization_id = ? AND account_id = ?", orgID, accountID).First(&mem).Error
+	return mem, err == nil
+}
+
+func (m *Module) Organization(ctx context.Context, id uuid.UUID) (persist.Organization, error) {
+	return m.loadOrg(m.DB.WithContext(ctx), id)
 }
 
 func (m *Module) Account(ctx context.Context, id uuid.UUID) (persist.Account, error) {

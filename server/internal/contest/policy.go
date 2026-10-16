@@ -80,6 +80,55 @@ func CanExpandSourcePublic(s Snapshot) error {
 	return nil
 }
 
+func SourceVisibilityShouldLock(s Snapshot, now time.Time) bool {
+	return !now.Before(s.RegisterStartsAt)
+}
+
+// Access is the caller’s relation to one loaded organization/contest.
+// It is derived server-side after loading those records; it is not taken from the client.
+type Access struct {
+	SiteAdmin  bool
+	OrgMember  bool
+	OrgManage  bool
+	Registered bool
+	Accepted   bool
+}
+
+func CanViewContest(allowExternal, signedIn bool, a Access) error {
+	if a.SiteAdmin || a.OrgMember || a.Accepted || a.Registered {
+		return nil
+	}
+	if allowExternal && signedIn {
+		return nil
+	}
+	if !signedIn {
+		return apperr.New(apperr.Unauthorized, "not signed in")
+	}
+	return apperr.New(apperr.Forbidden, "cannot view this contest")
+}
+
+func CanListOrgContestCatalog(a Access) bool {
+	return a.SiteAdmin || a.OrgMember
+}
+
+func CanViewContestProblems(a Access) error {
+	if a.SiteAdmin || a.OrgMember || a.Accepted {
+		return nil
+	}
+	return apperr.New(apperr.Forbidden, "cannot view contest problems")
+}
+
+func CanViewProblemBank(a Access) error {
+	if a.SiteAdmin || a.OrgMember {
+		return nil
+	}
+	return apperr.New(apperr.Forbidden, "not an organization member")
+}
+
+func ContestantLettersOnly(a Access) bool {
+	return a.Accepted && !a.OrgMember && !a.SiteAdmin
+}
+
 func TeamSizeOK(s Snapshot, n int) error {
 	if n < 1 {
 		return apperr.New(apperr.Invalid, "team must have at least one member")
