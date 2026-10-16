@@ -30,7 +30,7 @@ func (a *API) contestEvents(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if _, err := a.Contest.Get(c.Request.Context(), id); err != nil {
+	if _, err := a.Contest.Get(c.Request.Context(), p, id); err != nil {
 		writeErr(c, err)
 		return
 	}
