@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -40,12 +40,29 @@ func Run() error {
 	if err != nil {
 		return err
 	}
+	configureLog(cfg)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	return run(ctx, cfg)
+}
+
+func configureLog(cfg config.Config) {
+	opts := &slog.HandlerOptions{Level: slog.LevelInfo}
+	var h slog.Handler
+	if cfg.Production() {
+		h = slog.NewJSONHandler(os.Stderr, opts)
+	} else {
+		h = slog.NewTextHandler(os.Stderr, opts)
+	}
+	slog.SetDefault(slog.New(h))
+}
+
+func run(ctx context.Context, cfg config.Config) error {
 	clk := clock.System{}
 	db, err := persist.Open(cfg.DatabaseURL)
 	if err != nil {
 		return fmt.Errorf("database: %w", err)
 	}
-	ctx := context.Background()
 	if err := persist.Migrate(ctx, db); err != nil {
 		return fmt.Errorf("migrate: %w", err)
 	}
@@ -61,7 +78,7 @@ func Run() error {
 		}
 		blobs = s3
 	} else {
-		log.Print("S3 is not configured; using in-memory object store (dev only)")
+		slog.Warn("S3 is not configured; using in-memory object store (dev only)")
 		blobs = objectstore.NewMemory()
 	}
 
@@ -78,7 +95,7 @@ func Run() error {
 		}
 		rdb = redis.NewClient(opt)
 	} else {
-		log.Print("Redis is not configured; outbox will not publish and scheduling will poll PostgreSQL")
+		slog.Warn("Redis is not configured; outbox will not publish and scheduling will poll PostgreSQL")
 	}
 
 	id := &identity.Module{DB: db, Clock: clk, Mail: mail, Limit: rate.New(), PublicURL: cfg.PublicURL}
@@ -97,8 +114,25 @@ func Run() error {
 	api := &httpapi.API{
 		Identity: id, Contest: ct, Problem: pr, Submission: sub, Judging: jg, Scoring: sc,
 		Blobs: blobs, Secure: cfg.SecureCookie,
+		Ready: func(ctx context.Context) error {
+			if err := persist.Ping(ctx, db); err != nil {
+				return err
+			}
+			if rdb != nil {
+				return rdb.Ping(ctx).Err()
+			}
+			return nil
+		},
 	}
-	httpSrv := &http.Server{Addr: cfg.HTTPAddr, Handler: api.Router()}
+	httpSrv := &http.Server{
+		Addr:              cfg.HTTPAddr,
+		Handler:           api.Router(),
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		IdleTimeout:       90 * time.Second,
+		MaxHeaderBytes:    1 << 20,
+		// WriteTimeout stays zero: SSE connections write for the lifetime of the contest view.
+	}
 
 	lis, err := net.Listen("tcp", cfg.GRPCAddr)
 	if err != nil {
@@ -112,55 +146,44 @@ func Run() error {
 		}
 		grpcSrv = grpc.NewServer(grpc.Creds(credentials.NewServerTLSFromCert(&cert)))
 	} else {
-		log.Print("gRPC TLS certs are not set; nodes must only be used on a trusted network for development")
+		slog.Warn("gRPC TLS certs are not set; nodes must only be used on a trusted network for development")
 		grpcSrv = grpc.NewServer()
 	}
 	judgev1.RegisterJudgeControlServer(grpcSrv, &judgegrpc.Server{Judging: jg, Hub: jg.Hub, Clock: clk})
 
-	runCtx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	pub := &outbox.Publisher{DB: db, Redis: rdb}
-	go pub.Run(runCtx)
 	cons := &stream.Consumer{
 		DB: db, Redis: rdb, Group: "ephyra-server", Consumer: uuid.NewString(),
 		OnReady: jg.Schedule,
 	}
-	go cons.Run(runCtx)
-	go func() {
-		t := time.NewTicker(2 * time.Second)
-		defer t.Stop()
-		for {
-			select {
-			case <-runCtx.Done():
-				return
-			case <-t.C:
-				_ = jg.Schedule(runCtx)
-				_ = jg.ReapLost(runCtx)
-				_ = sc.TryPublish(runCtx)
+
+	slog.Info("listening", "http", cfg.HTTPAddr, "grpc", cfg.GRPCAddr)
+	return serve(ctx, httpSrv, grpcSrv, lis,
+		pub.Run,
+		cons.Run,
+		func(ctx context.Context) error {
+			return background(ctx, jg, sc)
+		},
+	)
+}
+
+func background(ctx context.Context, jg *judging.Module, sc *scoring.Module) error {
+	t := time.NewTicker(2 * time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-t.C:
+			if err := jg.Schedule(ctx); err != nil && ctx.Err() == nil {
+				slog.Error("schedule", "err", err)
+			}
+			if err := jg.ReapLost(ctx); err != nil && ctx.Err() == nil {
+				slog.Error("reap", "err", err)
+			}
+			if err := sc.TryPublish(ctx); err != nil && ctx.Err() == nil {
+				slog.Error("publish", "err", err)
 			}
 		}
-	}()
-
-	go func() {
-		log.Printf("http %s", cfg.HTTPAddr)
-		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("http: %v", err)
-		}
-	}()
-	go func() {
-		log.Printf("grpc %s", cfg.GRPCAddr)
-		if err := grpcSrv.Serve(lis); err != nil {
-			log.Printf("grpc: %v", err)
-		}
-	}()
-
-	ch := make(chan os.Signal, 1)
-	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
-	<-ch
-	cancel()
-	shutdownCtx, done := context.WithTimeout(context.Background(), 10*time.Second)
-	defer done()
-	_ = httpSrv.Shutdown(shutdownCtx)
-	grpcSrv.GracefulStop()
-	return nil
+	}
 }

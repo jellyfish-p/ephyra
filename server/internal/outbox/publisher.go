@@ -2,7 +2,7 @@ package outbox
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/jellyfish-p/ephyra/server/internal/persist"
@@ -13,26 +13,34 @@ import (
 const Stream = "ephyra.events"
 
 type Publisher struct {
-	DB    *gorm.DB
-	Redis *redis.Client
+	DB     *gorm.DB
+	Redis  *redis.Client
+	Stream string
 }
 
-func (p *Publisher) Run(ctx context.Context) {
+func (p *Publisher) streamName() string {
+	if p.Stream != "" {
+		return p.Stream
+	}
+	return Stream
+}
+
+func (p *Publisher) Run(ctx context.Context) error {
 	t := time.NewTicker(time.Second)
 	defer t.Stop()
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			return nil
 		case <-t.C:
-			if err := p.flush(ctx); err != nil {
-				log.Printf("outbox: %v", err)
+			if err := p.Flush(ctx); err != nil && ctx.Err() == nil {
+				slog.Error("outbox", "err", err)
 			}
 		}
 	}
 }
 
-func (p *Publisher) flush(ctx context.Context) error {
+func (p *Publisher) Flush(ctx context.Context) error {
 	if p.Redis == nil {
 		return nil
 	}
@@ -43,7 +51,7 @@ func (p *Publisher) flush(ctx context.Context) error {
 	now := time.Now().UTC()
 	for _, ev := range events {
 		if err := p.Redis.XAdd(ctx, &redis.XAddArgs{
-			Stream: Stream,
+			Stream: p.streamName(),
 			Values: StreamFields(ev),
 		}).Err(); err != nil {
 			return err

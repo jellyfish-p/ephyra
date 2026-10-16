@@ -2,6 +2,7 @@ package persist
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"sort"
@@ -31,6 +32,21 @@ func Open(dsn string) (*gorm.DB, error) {
 	sqlDB.SetMaxIdleConns(10)
 	sqlDB.SetConnMaxLifetime(time.Hour)
 	return db, nil
+}
+
+func Ping(ctx context.Context, db *gorm.DB) error {
+	if db == nil {
+		return fmt.Errorf("database is not configured")
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		return err
+	}
+	return sqlDB.PingContext(ctx)
+}
+
+func IsNotFound(err error) bool {
+	return errors.Is(err, gorm.ErrRecordNotFound)
 }
 
 func Migrate(ctx context.Context, db *gorm.DB) error {

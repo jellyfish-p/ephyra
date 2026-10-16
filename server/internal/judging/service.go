@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	judgev1 "github.com/jellyfish-p/ephyra/protocol/judge/v1"
 	"github.com/jellyfish-p/ephyra/server/internal/access"
 	"github.com/jellyfish-p/ephyra/server/internal/apperr"
 	"github.com/jellyfish-p/ephyra/server/internal/clock"
@@ -18,7 +17,6 @@ import (
 	"github.com/jellyfish-p/ephyra/server/internal/objectstore"
 	"github.com/jellyfish-p/ephyra/server/internal/persist"
 	"github.com/jellyfish-p/ephyra/server/internal/problem"
-	"github.com/jellyfish-p/ephyra/server/internal/scoring"
 	"github.com/jellyfish-p/ephyra/server/internal/sec"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -164,33 +162,34 @@ type RoutingEntry struct {
 	Priority int
 }
 
-func (m *Module) Handshake(ctx context.Context, req *judgev1.HandshakeRequest) (uuid.UUID, *judgev1.HandshakeResponse, error) {
-	rej := func(reason string) (uuid.UUID, *judgev1.HandshakeResponse, error) {
-		return uuid.Nil, &judgev1.HandshakeResponse{Accepted: false, RejectReason: reason, ProtocolVersion: domain.ProtocolVersion}, nil
+func rejectHello(reason string) Admission {
+	return Admission{Accepted: false, RejectReason: reason, ProtocolVersion: domain.ProtocolVersion}
+}
+
+func (m *Module) Handshake(ctx context.Context, hello Hello) (Admission, error) {
+	if hello.ProtocolVersion != domain.ProtocolVersion {
+		return rejectHello("unsupported protocol version"), nil
 	}
-	if req.GetProtocolVersion() != domain.ProtocolVersion {
-		return rej("unsupported protocol version")
-	}
-	nodeID, err := uuid.Parse(req.GetNodeId())
+	nodeID, err := uuid.Parse(hello.NodeID)
 	if err != nil {
-		return rej("invalid node id")
+		return rejectHello("invalid node id"), nil
 	}
 	var node persist.JudgeNode
 	if err := m.DB.WithContext(ctx).First(&node, "id = ?", nodeID).Error; err != nil {
-		return rej("unknown node")
+		return rejectHello("unknown node"), nil
 	}
-	if node.RevokedAt != nil || !node.Enabled || node.CredentialHash != sec.HashToken(req.GetCredential()) {
-		return rej("invalid credentials")
+	if node.RevokedAt != nil || !node.Enabled || node.CredentialHash != sec.HashToken(hello.Credential) {
+		return rejectHello("invalid credentials"), nil
 	}
 	now := m.now()
 	if err := m.DB.WithContext(ctx).Model(&node).Updates(map[string]any{
-		"connected": true, "last_heartbeat_at": now, "advertised_profiles": persist.JSONList(req.GetExecutionProfileIds()),
-		"max_slots": max(int(req.GetMaxSlots()), 1),
+		"connected": true, "last_heartbeat_at": now, "advertised_profiles": persist.JSONList(hello.Profiles),
+		"max_slots": max(int(hello.MaxSlots), 1),
 	}).Error; err != nil {
-		return uuid.Nil, nil, err
+		return Admission{}, err
 	}
-	return node.ID, &judgev1.HandshakeResponse{
-		Accepted: true, ProtocolVersion: domain.ProtocolVersion,
+	return Admission{
+		NodeID: node.ID, Accepted: true, ProtocolVersion: domain.ProtocolVersion,
 		HeartbeatIntervalMs: int32(domain.HeartbeatInterval / time.Millisecond),
 		LeaseMs:             int32(domain.NodeLostAfter / time.Millisecond),
 	}, nil
@@ -530,59 +529,4 @@ func (m *Module) grantURL(ctx context.Context, tx *gorm.DB, objectID, attemptID 
 		return "", err
 	}
 	return fmt.Sprintf("%s/api/judge/files/%s", m.PublicURL, raw), nil
-}
-
-func toCaseOutcomes(in []*judgev1.CaseResult) []scoring.CaseOutcome {
-	out := make([]scoring.CaseOutcome, 0, len(in))
-	for _, c := range in {
-		v, _ := domain.ParseVerdict(c.GetVerdict())
-		out = append(out, scoring.CaseOutcome{CaseID: c.GetCaseId(), Verdict: v})
-	}
-	return out
-}
-
-func toSubOutcomes(in []*judgev1.SubtaskResult) []scoring.SubtaskOutcome {
-	out := make([]scoring.SubtaskOutcome, 0, len(in))
-	for _, s := range in {
-		sc, _ := exact.Parse(s.GetScore())
-		v, _ := domain.ParseVerdict(s.GetVerdict())
-		out = append(out, scoring.SubtaskOutcome{ID: s.GetSubtaskId(), Score: sc, Verdict: v})
-	}
-	return out
-}
-
-func ReportFromProto(r *judgev1.AttemptResult) (Report, error) {
-	attemptID, err := uuid.Parse(r.GetAttemptId())
-	if err != nil {
-		return Report{}, apperr.New(apperr.Invalid, "bad attempt id")
-	}
-	taskID, err := uuid.Parse(r.GetTaskId())
-	if err != nil {
-		return Report{}, apperr.New(apperr.Invalid, "bad task id")
-	}
-	nodeID, err := uuid.Parse(r.GetNodeId())
-	if err != nil {
-		return Report{}, apperr.New(apperr.Invalid, "bad node id")
-	}
-	revID, err := uuid.Parse(r.GetJudgeDataRevisionId())
-	if err != nil {
-		return Report{}, apperr.New(apperr.Invalid, "bad revision id")
-	}
-	verdict, ok := domain.ParseVerdict(r.GetVerdict())
-	if !ok && !r.GetSystemFault() {
-		return Report{}, apperr.New(apperr.Invalid, "bad verdict")
-	}
-	score := exact.Zero()
-	if r.GetScore() != "" {
-		score, err = exact.Parse(r.GetScore())
-		if err != nil {
-			return Report{}, apperr.New(apperr.Invalid, err.Error())
-		}
-	}
-	return Report{
-		AttemptID: attemptID, TaskID: taskID, Generation: r.GetGeneration(), NodeID: nodeID,
-		RevisionID: revID, ProfileID: r.GetExecutionProfileId(), Verdict: verdict, Score: score,
-		CompilerFailed: r.GetCompilerFailed(), SystemFault: r.GetSystemFault(), FaultKind: r.GetSystemFaultKind(),
-		Cases: toCaseOutcomes(r.GetCases()), Subtasks: toSubOutcomes(r.GetSubtasks()),
-	}, nil
 }

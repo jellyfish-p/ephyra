@@ -142,11 +142,17 @@ func (m *Module) Submit(ctx context.Context, p access.Principal, contestID uuid.
 func (m *Module) SourceBlob(ctx context.Context, id uuid.UUID) (BlobRef, error) {
 	var s persist.Submission
 	if err := m.DB.WithContext(ctx).First(&s, "id = ?", id).Error; err != nil {
-		return BlobRef{}, apperr.New(apperr.NotFound, "submission not found")
+		if persist.IsNotFound(err) {
+			return BlobRef{}, apperr.New(apperr.NotFound, "submission not found")
+		}
+		return BlobRef{}, err
 	}
 	var obj persist.Object
 	if err := m.DB.WithContext(ctx).First(&obj, "id = ?", s.SourceObjectID).Error; err != nil {
-		return BlobRef{}, apperr.New(apperr.NotFound, "object not found")
+		if persist.IsNotFound(err) {
+			return BlobRef{}, apperr.New(apperr.NotFound, "object not found")
+		}
+		return BlobRef{}, err
 	}
 	return BlobRef{StorageKey: obj.StorageKey, SHA256: obj.SHA256, ContentType: obj.ContentType}, nil
 }

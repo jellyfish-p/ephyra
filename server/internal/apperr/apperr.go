@@ -1,6 +1,9 @@
 package apperr
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 type Code string
 
@@ -35,14 +38,14 @@ func New(code Code, msg string) *Error {
 }
 
 func Is(err error, code Code) bool {
-	if err == nil {
-		return false
-	}
-	as, ok := err.(*Error)
-	return ok && as.Code == code
+	got, ok := As(err)
+	return ok && got.Code == code
 }
 
 func As(err error) (*Error, bool) {
-	e, ok := err.(*Error)
-	return e, ok
+	var e *Error
+	if errors.As(err, &e) {
+		return e, true
+	}
+	return nil, false
 }

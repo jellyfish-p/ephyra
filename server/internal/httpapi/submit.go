@@ -81,11 +81,7 @@ func (a *API) getSource(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := a.Scoring.CanReadSource(c.Request.Context(), p, id); err != nil {
-		writeErr(c, err)
-		return
-	}
-	obj, err := a.Submission.SourceBlob(c.Request.Context(), id)
+	obj, err := a.Scoring.AuthorizedSource(c.Request.Context(), p, id)
 	if err != nil {
 		writeErr(c, err)
 		return

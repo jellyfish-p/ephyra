@@ -1,0 +1,46 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ephyra
+          POSTGRES_PASSWORD: ephyra
+          POSTGRES_DB: ephyra_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      EPHYRA_TEST_DATABASE_URL: postgres://ephyra:ephyra@localhost:5432/ephyra_test?sslmode=disable
+      EPHYRA_TEST_REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+      - name: test
+        working-directory: server
+        run: go test ./...
+      - name: race
+        working-directory: server
+        run: go test -race ./internal/judging ./internal/judgegrpc ./internal/app ./internal/httpapi ./internal/outbox ./internal/stream

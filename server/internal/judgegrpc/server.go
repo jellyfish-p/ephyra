@@ -3,19 +3,18 @@ package judgegrpc
 import (
 	"context"
 	"io"
-	"log"
+	"log/slog"
 
 	"github.com/google/uuid"
 	judgev1 "github.com/jellyfish-p/ephyra/protocol/judge/v1"
 	"github.com/jellyfish-p/ephyra/server/internal/clock"
-	"github.com/jellyfish-p/ephyra/server/internal/domain"
 	"github.com/jellyfish-p/ephyra/server/internal/judging"
 )
 
 // judgingAPI is the judging surface Connect uses. *judging.Module implements it;
 // tests may substitute a stub so Connect can be covered without GORM.
 type judgingAPI interface {
-	Handshake(ctx context.Context, req *judgev1.HandshakeRequest) (uuid.UUID, *judgev1.HandshakeResponse, error)
+	Handshake(ctx context.Context, hello judging.Hello) (judging.Admission, error)
 	Heartbeat(ctx context.Context, nodeID uuid.UUID, active []string) ([]string, error)
 	Disconnect(ctx context.Context, nodeID uuid.UUID)
 	AcceptResult(ctx context.Context, report judging.Report) error
@@ -45,15 +44,42 @@ func (s *Server) nodeHub() *judging.Hub {
 	panic("judgegrpc: Hub is required so Connect and Schedule share one connection table")
 }
 
-func (s *Server) ackActive(stream judgev1.JudgeControl_ConnectServer, nodeID uuid.UUID, active []string) {
-	inv, err := s.Judging.Heartbeat(stream.Context(), nodeID, active)
+func (s *Server) ackActive(ctx context.Context, conn *judging.Conn, nodeID uuid.UUID, active []string) {
+	inv, err := s.Judging.Heartbeat(ctx, nodeID, active)
 	if err != nil {
-		log.Printf("heartbeat: %v", err)
+		slog.Error("heartbeat", "node_id", nodeID, "err", err)
 		return
 	}
 	ack := ackInvalidations(inv)
 	ack.UnixMs = s.Clock.Now().UnixMilli()
-	_ = stream.Send(&judgev1.ServerMessage{Body: &judgev1.ServerMessage_HeartbeatAck{HeartbeatAck: ack}})
+	msg := &judgev1.ServerMessage{Body: &judgev1.ServerMessage_HeartbeatAck{HeartbeatAck: ack}}
+	if !conn.Send(ctx, msg) {
+		slog.Warn("heartbeat ack dropped", "node_id", nodeID)
+	}
+}
+
+func writeLoop(stream judgev1.JudgeControl_ConnectServer, conn *judging.Conn) error {
+	for {
+		select {
+		case msg := <-conn.Messages():
+			if err := stream.Send(msg); err != nil {
+				return err
+			}
+		case <-conn.Done():
+			for {
+				select {
+				case msg := <-conn.Messages():
+					if err := stream.Send(msg); err != nil {
+						return err
+					}
+				default:
+					return nil
+				}
+			}
+		case <-stream.Context().Done():
+			return stream.Context().Err()
+		}
+	}
 }
 
 func (s *Server) Connect(stream judgev1.JudgeControl_ConnectServer) error {
@@ -65,68 +91,57 @@ func (s *Server) Connect(stream judgev1.JudgeControl_ConnectServer) error {
 	if hs == nil {
 		return io.EOF
 	}
-	nodeID, resp, err := s.Judging.Handshake(stream.Context(), hs)
+	adm, err := s.Judging.Handshake(stream.Context(), helloFromProto(hs))
 	if err != nil {
 		return err
 	}
-	if err := stream.Send(&judgev1.ServerMessage{Body: &judgev1.ServerMessage_Handshake{Handshake: resp}}); err != nil {
+	if err := stream.Send(&judgev1.ServerMessage{Body: &judgev1.ServerMessage_Handshake{Handshake: admissionToProto(adm)}}); err != nil {
 		return err
 	}
-	if !resp.Accepted {
+	if !adm.Accepted {
 		return nil
 	}
-	conn := &judging.Conn{
-		NodeID: nodeID, Send: make(chan *judgev1.ServerMessage, 8),
-		Profiles: hs.GetExecutionProfileIds(), MaxSlots: hs.GetMaxSlots(),
-	}
+	conn := judging.NewConn(adm.NodeID, hs.GetExecutionProfileIds(), hs.GetMaxSlots())
 	s.nodeHub().Register(conn)
-	defer func() {
-		s.nodeHub().Unregister(nodeID, conn)
-		s.Judging.Disconnect(context.Background(), nodeID)
-	}()
+	defer s.Judging.Disconnect(context.Background(), adm.NodeID)
 
-	errCh := make(chan error, 1)
-	go func() {
-		for msg := range conn.Send {
-			if err := stream.Send(msg); err != nil {
-				errCh <- err
-				return
-			}
-		}
-	}()
+	writeDone := make(chan error, 1)
+	go func() { writeDone <- writeLoop(stream, conn) }()
 
+	readErr := s.readLoop(stream, conn, adm.NodeID)
+	s.nodeHub().Unregister(adm.NodeID, conn)
+	writeErr := <-writeDone
+	if readErr != nil {
+		return readErr
+	}
+	return writeErr
+}
+
+func (s *Server) readLoop(stream judgev1.JudgeControl_ConnectServer, conn *judging.Conn, nodeID uuid.UUID) error {
 	for {
-		select {
-		case err := <-errCh:
-			return err
-		default:
-		}
 		msg, err := stream.Recv()
 		if err != nil {
 			return err
 		}
 		switch b := msg.Body.(type) {
 		case *judgev1.NodeMessage_Heartbeat:
-			s.ackActive(stream, nodeID, b.Heartbeat.GetActiveAttemptIds())
+			s.ackActive(stream.Context(), conn, nodeID, b.Heartbeat.GetActiveAttemptIds())
 		case *judgev1.NodeMessage_Result:
-			rep, err := judging.ReportFromProto(b.Result)
+			rep, err := reportFromProto(b.Result)
 			if err != nil {
-				log.Printf("result parse: %v", err)
+				slog.Error("result parse", "node_id", nodeID, "err", err)
 				continue
 			}
 			if err := s.Judging.AcceptResult(stream.Context(), rep); err != nil {
-				log.Printf("result: %v", err)
+				slog.Error("result", "node_id", nodeID, "attempt_id", rep.AttemptID, "err", err)
 			}
 		case *judgev1.NodeMessage_Slots:
 			// SlotReport is the same "here is what I am running" signal as
 			// Heartbeat. The node must stop invalidated attempts before it
 			// advertises free slots, so we reuse HeartbeatAck.
-			s.ackActive(stream, nodeID, b.Slots.GetActiveAttemptIds())
+			s.ackActive(stream.Context(), conn, nodeID, b.Slots.GetActiveAttemptIds())
 		case *judgev1.NodeMessage_Progress:
 			_ = b
-		default:
-			_ = domain.ProtocolVersion
-			_ = uuid.Nil
 		}
 	}
 }

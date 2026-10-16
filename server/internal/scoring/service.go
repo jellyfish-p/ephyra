@@ -55,12 +55,17 @@ func (m *Module) TryPublish(ctx context.Context) error {
 	for _, c := range contests {
 		items, err := m.workItems(ctx, c)
 		if err != nil {
-			continue
+			if ctx.Err() == nil {
+				return fmt.Errorf("publication work for %s: %w", c.ID, err)
+			}
+			return err
 		}
 		if !PublicationBarrier(true, items).Ready {
 			continue
 		}
-		_ = m.DB.WithContext(ctx).Model(&c).Update("published_at", now).Error
+		if err := m.DB.WithContext(ctx).Model(&c).Update("published_at", now).Error; err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -68,9 +73,39 @@ func (m *Module) TryPublish(ctx context.Context) error {
 func (m *Module) loadSubmission(ctx context.Context, id uuid.UUID) (persist.Submission, error) {
 	var sub persist.Submission
 	if err := m.DB.WithContext(ctx).First(&sub, "id = ?", id).Error; err != nil {
-		return persist.Submission{}, apperr.New(apperr.NotFound, "submission not found")
+		if persist.IsNotFound(err) {
+			return persist.Submission{}, apperr.New(apperr.NotFound, "submission not found")
+		}
+		return persist.Submission{}, err
 	}
 	return sub, nil
+}
+
+// SourceRef is the storage handle for a submission's source. It is not a GORM model.
+type SourceRef struct {
+	StorageKey  string
+	SHA256      string
+	ContentType string
+}
+
+// AuthorizedSource checks visibility then returns the blob identity. Callers
+// must not fetch source by id without going through this method.
+func (m *Module) AuthorizedSource(ctx context.Context, p access.Principal, submissionID uuid.UUID) (SourceRef, error) {
+	if err := m.CanReadSource(ctx, p, submissionID); err != nil {
+		return SourceRef{}, err
+	}
+	sub, err := m.loadSubmission(ctx, submissionID)
+	if err != nil {
+		return SourceRef{}, err
+	}
+	var obj persist.Object
+	if err := m.DB.WithContext(ctx).First(&obj, "id = ?", sub.SourceObjectID).Error; err != nil {
+		if persist.IsNotFound(err) {
+			return SourceRef{}, apperr.New(apperr.NotFound, "object not found")
+		}
+		return SourceRef{}, err
+	}
+	return SourceRef{StorageKey: obj.StorageKey, SHA256: obj.SHA256, ContentType: obj.ContentType}, nil
 }
 
 func (m *Module) CanReadSource(ctx context.Context, p access.Principal, submissionID uuid.UUID) error {

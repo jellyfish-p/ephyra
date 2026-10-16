@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"context"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -32,14 +34,17 @@ type API struct {
 	Scoring    *scoring.Module
 	Blobs      objectstore.Store
 	Secure     bool
+	Ready      func(context.Context) error
 }
 
 func (a *API) Router() *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
+	r.Use(requestID)
 	r.Use(a.session)
 	r.Use(a.csrf)
 	r.GET("/api/health", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true}) })
+	r.GET("/api/ready", a.ready)
 	a.authRoutes(r)
 	a.orgRoutes(r)
 	a.contestRoutes(r)
@@ -124,33 +129,66 @@ func (a *API) clearSession(c *gin.Context) {
 	http.SetCookie(c.Writer, &http.Cookie{Name: csrfCookie, Path: "/", Secure: a.Secure, Expires: past, MaxAge: -1})
 }
 
-func writeErr(c *gin.Context, err error) {
-	code := http.StatusInternalServerError
-	msg := err.Error()
-	ec := apperr.Internal
-	if e, ok := apperr.As(err); ok {
-		ec = e.Code
-		msg = e.Msg
-		switch e.Code {
-		case apperr.Unauthorized:
-			code = http.StatusUnauthorized
-		case apperr.Forbidden, apperr.Unverified:
-			code = http.StatusForbidden
-		case apperr.NotFound:
-			code = http.StatusNotFound
-		case apperr.Conflict:
-			code = http.StatusConflict
-		case apperr.Invalid:
-			code = http.StatusBadRequest
-		case apperr.TooMany:
-			code = http.StatusTooManyRequests
-		case apperr.Gone:
-			code = http.StatusGone
-		case apperr.Unavailable:
-			code = http.StatusServiceUnavailable
-		}
+func requestID(c *gin.Context) {
+	id := c.GetHeader("X-Request-ID")
+	if id == "" {
+		id = uuid.NewString()
 	}
-	c.JSON(code, gin.H{"error": gin.H{"code": ec, "message": msg}})
+	c.Set("request_id", id)
+	c.Writer.Header().Set("X-Request-ID", id)
+	c.Next()
+}
+
+func (a *API) ready(c *gin.Context) {
+	if a.Ready == nil {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+		return
+	}
+	if err := a.Ready(c.Request.Context()); err != nil {
+		slog.ErrorContext(c.Request.Context(), "ready check failed", "err", err, "request_id", c.GetString("request_id"))
+		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+func writeErr(c *gin.Context, err error) {
+	if e, ok := apperr.As(err); ok {
+		if e.Code == apperr.Internal {
+			slog.ErrorContext(c.Request.Context(), "internal error",
+				"err", err, "request_id", c.GetString("request_id"),
+				"method", c.Request.Method, "path", c.Request.URL.Path)
+		}
+		c.JSON(statusFor(e.Code), gin.H{"error": gin.H{"code": e.Code, "message": e.Msg}})
+		return
+	}
+	slog.ErrorContext(c.Request.Context(), "unhandled error",
+		"err", err, "request_id", c.GetString("request_id"),
+		"method", c.Request.Method, "path", c.Request.URL.Path)
+	c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": apperr.Internal, "message": "internal error"}})
+}
+
+func statusFor(code apperr.Code) int {
+	switch code {
+	case apperr.Unauthorized:
+		return http.StatusUnauthorized
+	case apperr.Forbidden, apperr.Unverified:
+		return http.StatusForbidden
+	case apperr.NotFound:
+		return http.StatusNotFound
+	case apperr.Conflict:
+		return http.StatusConflict
+	case apperr.Invalid:
+		return http.StatusBadRequest
+	case apperr.TooMany:
+		return http.StatusTooManyRequests
+	case apperr.Gone:
+		return http.StatusGone
+	case apperr.Unavailable:
+		return http.StatusServiceUnavailable
+	default:
+		return http.StatusInternalServerError
+	}
 }
 
 func requireUser(c *gin.Context) (access.Principal, bool) {

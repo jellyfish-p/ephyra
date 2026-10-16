@@ -3,6 +3,7 @@ package judging
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 
 	"github.com/google/uuid"
 	judgev1 "github.com/jellyfish-p/ephyra/protocol/judge/v1"
@@ -34,6 +35,9 @@ func (m *Module) Schedule(ctx context.Context) error {
 	}
 	for _, t := range OrderPendingWork(pending) {
 		if err := m.dispatchOne(ctx, t.TaskID); err != nil {
+			if ctx.Err() == nil {
+				slog.Error("dispatch", "task_id", t.TaskID, "err", err)
+			}
 			continue
 		}
 	}
@@ -219,24 +223,27 @@ func (m *Module) poolSnapshots(tx *gorm.DB, orgID uuid.UUID, profile string) ([]
 func (m *Module) pickNode(tx *gorm.DB, poolID uuid.UUID, profile string) (persist.JudgeNode, int, error) {
 	var nodes []persist.JudgeNode
 	if err := tx.Where("pool_id = ? AND enabled = TRUE AND connected = TRUE AND revoked_at IS NULL AND jsonb_exists(advertised_profiles, ?)", poolID, profile).
-		Find(&nodes).Error; err != nil {
+		Order("id").Find(&nodes).Error; err != nil {
 		return persist.JudgeNode{}, 0, err
 	}
 	var best persist.JudgeNode
 	bestFree := -1
 	bestOcc := 0
 	for _, n := range nodes {
+		var locked persist.JudgeNode
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&locked, "id = ?", n.ID).Error; err != nil {
+			return persist.JudgeNode{}, 0, err
+		}
 		var occ int64
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Model(&persist.JudgingAttempt{}).
-			Where("node_id = ? AND state = ?", n.ID, domain.AttemptDispatched).
+		if err := tx.Model(&persist.JudgingAttempt{}).
+			Where("node_id = ? AND state = ?", locked.ID, domain.AttemptDispatched).
 			Count(&occ).Error; err != nil {
 			return persist.JudgeNode{}, 0, err
 		}
-		free := n.MaxSlots - int(occ)
+		free := locked.MaxSlots - int(occ)
 		if free > bestFree {
 			bestFree = free
-			best = n
+			best = locked
 			bestOcc = int(occ)
 		}
 	}
