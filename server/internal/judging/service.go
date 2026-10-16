@@ -37,55 +37,58 @@ func New(db *gorm.DB, clk clock.Clock, blobs objectstore.Store, publicURL string
 
 func (m *Module) now() time.Time { return m.Clock.Now().UTC() }
 
-func (m *Module) CreatePool(ctx context.Context, p access.Principal, kind domain.PoolKind, orgID *uuid.UUID, name string) (persist.JudgePool, error) {
+func (m *Module) CreatePool(ctx context.Context, p access.Principal, kind domain.PoolKind, orgID *uuid.UUID, name string) (PoolView, error) {
 	if kind == domain.PoolSystem && !p.SiteAdmin {
-		return persist.JudgePool{}, apperr.New(apperr.Forbidden, "only site admins can create system pools")
+		return PoolView{}, apperr.New(apperr.Forbidden, "only site admins can create system pools")
 	}
 	if kind == domain.PoolOrganization {
 		if orgID == nil {
-			return persist.JudgePool{}, apperr.New(apperr.Invalid, "organization pool requires organization id")
+			return PoolView{}, apperr.New(apperr.Invalid, "organization pool requires organization id")
 		}
 		if err := m.requireManage(ctx, p, *orgID); err != nil {
-			return persist.JudgePool{}, err
+			return PoolView{}, err
 		}
 	}
 	pool := persist.JudgePool{
 		ID: uuid.New(), Kind: string(kind), OrganizationID: orgID, Name: name, Enabled: true, CreatedAt: m.now(),
 	}
 	if err := m.DB.WithContext(ctx).Create(&pool).Error; err != nil {
-		return persist.JudgePool{}, err
+		return PoolView{}, err
 	}
-	return pool, nil
+	return PoolView{ID: pool.ID, Kind: pool.Kind, Name: pool.Name}, nil
 }
 
-func (m *Module) RegisterNode(ctx context.Context, p access.Principal, poolID uuid.UUID, name string) (persist.JudgeNode, string, error) {
+func (m *Module) RegisterNode(ctx context.Context, p access.Principal, poolID uuid.UUID, name string) (NodeRegisteredView, error) {
 	var pool persist.JudgePool
 	if err := m.DB.WithContext(ctx).First(&pool, "id = ?", poolID).Error; err != nil {
-		return persist.JudgeNode{}, "", apperr.New(apperr.NotFound, "pool not found")
+		return NodeRegisteredView{}, apperr.New(apperr.NotFound, "pool not found")
 	}
 	if err := m.authorizePool(ctx, p, pool); err != nil {
-		return persist.JudgeNode{}, "", err
+		return NodeRegisteredView{}, err
 	}
 	raw, err := sec.RandomToken(32)
 	if err != nil {
-		return persist.JudgeNode{}, "", err
+		return NodeRegisteredView{}, err
 	}
 	node := persist.JudgeNode{
 		ID: uuid.New(), PoolID: poolID, Name: name, CredentialHash: sec.HashToken(raw),
 		Enabled: true, MaxSlots: domain.DefaultMaxSlots, AdvertisedProfiles: persist.JSONList{}, CreatedAt: m.now(),
 	}
 	if err := m.DB.WithContext(ctx).Create(&node).Error; err != nil {
-		return persist.JudgeNode{}, "", err
+		return NodeRegisteredView{}, err
 	}
-	return node, raw, persist.Audit(m.DB.WithContext(ctx), persist.AuditEvent{
+	if err := persist.Audit(m.DB.WithContext(ctx), persist.AuditEvent{
 		ActorID: &p.AccountID, Action: "node.register", OrganizationID: pool.OrganizationID, CreatedAt: m.now(),
-	})
+	}); err != nil {
+		return NodeRegisteredView{}, err
+	}
+	return NodeRegisteredView{ID: node.ID, Credential: raw}, nil
 }
 
-func (m *Module) RotateCredential(ctx context.Context, p access.Principal, nodeID uuid.UUID) (string, error) {
+func (m *Module) RotateCredential(ctx context.Context, p access.Principal, nodeID uuid.UUID) (CredentialView, error) {
 	raw, err := sec.RandomToken(32)
 	if err != nil {
-		return "", err
+		return CredentialView{}, err
 	}
 	err = m.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var node persist.JudgeNode
@@ -101,7 +104,10 @@ func (m *Module) RotateCredential(ctx context.Context, p access.Principal, nodeI
 		}
 		return tx.Model(&node).Update("credential_hash", sec.HashToken(raw)).Error
 	})
-	return raw, err
+	if err != nil {
+		return CredentialView{}, err
+	}
+	return CredentialView{Credential: raw}, nil
 }
 
 func (m *Module) RevokeNode(ctx context.Context, p access.Principal, nodeID uuid.UUID) error {
@@ -196,25 +202,27 @@ func (m *Module) Heartbeat(ctx context.Context, nodeID uuid.UUID, active []strin
 		Updates(map[string]any{"last_heartbeat_at": now, "connected": true}).Error; err != nil {
 		return nil, err
 	}
-	var attempts []persist.JudgingAttempt
-	if err := m.DB.WithContext(ctx).Where("node_id = ? AND state = ?", nodeID, domain.AttemptDispatched).Find(&attempts).Error; err != nil {
-		return nil, err
+	ids := make([]uuid.UUID, 0, len(active))
+	for _, s := range active {
+		id, err := uuid.Parse(s)
+		if err != nil {
+			continue
+		}
+		ids = append(ids, id)
 	}
-	live := map[string]struct{}{}
-	for _, id := range active {
-		live[id] = struct{}{}
+	var dbInvalidated []string
+	if len(ids) > 0 {
+		var invalid []persist.JudgingAttempt
+		if err := m.DB.WithContext(ctx).
+			Where("node_id = ? AND state = ? AND id IN ?", nodeID, domain.AttemptInvalidated, ids).
+			Find(&invalid).Error; err != nil {
+			return nil, err
+		}
+		for _, a := range invalid {
+			dbInvalidated = append(dbInvalidated, a.ID.String())
+		}
 	}
-	var invalidate []string
-	_ = attempts
-	_ = live
-	var invalid []persist.JudgingAttempt
-	if err := m.DB.WithContext(ctx).Where("node_id = ? AND state = ?", nodeID, domain.AttemptInvalidated).Find(&invalid).Error; err != nil {
-		return nil, err
-	}
-	for _, a := range invalid {
-		invalidate = append(invalidate, a.ID.String())
-	}
-	return invalidate, nil
+	return HeartbeatInvalidations(active, dbInvalidated), nil
 }
 
 func (m *Module) Disconnect(ctx context.Context, nodeID uuid.UUID) {
@@ -263,6 +271,8 @@ func (m *Module) AcceptResult(ctx context.Context, report Report) error {
 		}
 		if report.SystemFault {
 			updates["state"] = string(domain.AttemptFailed)
+			updates["verdict"] = ""
+			updates["score_hundredths"] = nil
 			if err := tx.Model(&att).Updates(updates).Error; err != nil {
 				return err
 			}
@@ -292,6 +302,7 @@ func (m *Module) AcceptResult(ctx context.Context, report Report) error {
 
 func (m *Module) Redispatch(ctx context.Context, p access.Principal, taskID uuid.UUID) error {
 	now := m.now()
+	plan := PlanRedispatch()
 	return m.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var task persist.JudgeTask
 		if err := tx.First(&task, "id = ?", taskID).Error; err != nil {
@@ -304,12 +315,14 @@ func (m *Module) Redispatch(ctx context.Context, p access.Principal, taskID uuid
 		if err := m.requireManage(ctx, p, c.OrganizationID); err != nil {
 			return err
 		}
-		if err := tx.Model(&persist.JudgingAttempt{}).
-			Where("task_id = ? AND state = ?", task.ID, domain.AttemptDispatched).
-			Updates(map[string]any{"state": string(domain.AttemptInvalidated)}).Error; err != nil {
-			return err
+		if plan.InvalidateDispatched {
+			if err := tx.Model(&persist.JudgingAttempt{}).
+				Where("task_id = ? AND state = ?", task.ID, domain.AttemptDispatched).
+				Updates(map[string]any{"state": string(domain.AttemptInvalidated)}).Error; err != nil {
+				return err
+			}
 		}
-		if err := tx.Model(&task).Update("state", string(domain.TaskPendingSchedule)).Error; err != nil {
+		if err := tx.Model(&task).Update("state", string(plan.TaskState)).Error; err != nil {
 			return err
 		}
 		payload, _ := json.Marshal(map[string]any{"task_id": task.ID.String(), "reason": "admin_redispatch"})
@@ -323,11 +336,11 @@ func (m *Module) Redispatch(ctx context.Context, p access.Principal, taskID uuid
 	})
 }
 
-func (m *Module) CreateRejudge(ctx context.Context, p access.Principal, contestProblemID, toRevisionID uuid.UUID) (persist.RejudgeBatch, error) {
+func (m *Module) CreateRejudge(ctx context.Context, p access.Principal, contestProblemID, toRevisionID uuid.UUID) (RejudgeBatchView, error) {
 	var batch persist.RejudgeBatch
 	err := m.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var cp persist.ContestProblem
-		if err := tx.First(&cp, "id = ?", contestProblemID).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&cp, "id = ?", contestProblemID).Error; err != nil {
 			return apperr.New(apperr.NotFound, "contest problem not found")
 		}
 		var c persist.Contest
@@ -341,6 +354,14 @@ func (m *Module) CreateRejudge(ctx context.Context, p access.Principal, contestP
 		if err := tx.First(&rev, "id = ? AND problem_id = ?", toRevisionID, cp.ProblemID).Error; err != nil {
 			return apperr.New(apperr.NotFound, "revision not found")
 		}
+		var snapshot []persist.Submission
+		if err := tx.Where("contest_problem_id = ?", cp.ID).Order("receive_seq").Find(&snapshot).Error; err != nil {
+			return err
+		}
+		var snapshotMax int64
+		if len(snapshot) > 0 {
+			snapshotMax = snapshot[len(snapshot)-1].ReceiveSeq
+		}
 		now := m.now()
 		batch = persist.RejudgeBatch{
 			ID: uuid.New(), ContestProblemID: cp.ID, FromRevisionID: cp.ScoringRevisionID,
@@ -352,11 +373,10 @@ func (m *Module) CreateRejudge(ctx context.Context, p access.Principal, contestP
 		if err := tx.Model(&cp).Update("target_revision_id", toRevisionID).Error; err != nil {
 			return err
 		}
-		var subs []persist.Submission
-		if err := tx.Where("contest_problem_id = ?", cp.ID).Find(&subs).Error; err != nil {
-			return err
-		}
-		for _, s := range subs {
+		for _, s := range snapshot {
+			if !InRejudgeSnapshot(s.ReceiveSeq, snapshotMax) {
+				continue
+			}
 			task := persist.JudgeTask{
 				ID: uuid.New(), SubmissionID: s.ID, ContestID: s.ContestID,
 				JudgeDataRevisionID: toRevisionID, ExecutionProfileID: s.ExecutionProfileID,
@@ -379,7 +399,10 @@ func (m *Module) CreateRejudge(ctx context.Context, p access.Principal, contestP
 			ActorID: &p.AccountID, Action: "rejudge.create", ContestID: &c.ID, CreatedAt: now,
 		})
 	})
-	return batch, err
+	if err != nil {
+		return RejudgeBatchView{}, err
+	}
+	return RejudgeBatchView{ID: batch.ID, State: batch.State}, nil
 }
 
 func (m *Module) SwitchRejudge(ctx context.Context, p access.Principal, batchID uuid.UUID) error {

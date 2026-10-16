@@ -17,6 +17,7 @@ import (
 	"github.com/jellyfish-p/ephyra/server/internal/objectstore"
 	"github.com/jellyfish-p/ephyra/server/internal/persist"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type Module struct {
@@ -76,7 +77,8 @@ func (m *Module) Submit(ctx context.Context, p access.Principal, contestID uuid.
 			return err
 		}
 		var cp persist.ContestProblem
-		if err := tx.Where("contest_id = ? AND letter = ?", contestID, letter).First(&cp).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("contest_id = ? AND letter = ?", contestID, letter).First(&cp).Error; err != nil {
 			return apperr.New(apperr.NotFound, "contest problem not found")
 		}
 		now := m.Clock.Now().UTC()
@@ -107,7 +109,8 @@ func (m *Module) Submit(ctx context.Context, p access.Principal, contestID uuid.
 		task := persist.JudgeTask{
 			ID: uuid.New(), SubmissionID: sub.ID, ContestID: contestID,
 			JudgeDataRevisionID: cp.TargetRevisionID, ExecutionProfileID: profile.ID,
-			Purpose: "initial", State: string(domain.TaskPendingSchedule), CreatedAt: now,
+			Purpose: "initial", RejudgeBatchID: OpenBatchIDForNewSubmission(),
+			State: string(domain.TaskPendingSchedule), CreatedAt: now,
 		}
 		if err := tx.Create(&task).Error; err != nil {
 			return err

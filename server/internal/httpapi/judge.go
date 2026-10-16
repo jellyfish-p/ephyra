@@ -56,7 +56,7 @@ func (a *API) createPool(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"id": pool.ID, "kind": pool.Kind, "name": pool.Name})
+	c.JSON(http.StatusCreated, pool)
 }
 
 func (a *API) registerNode(c *gin.Context) {
@@ -75,12 +75,12 @@ func (a *API) registerNode(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	node, cred, err := a.Judging.RegisterNode(c.Request.Context(), p, id, in.Name)
+	node, err := a.Judging.RegisterNode(c.Request.Context(), p, id, in.Name)
 	if err != nil {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"id": node.ID, "credential": cred})
+	c.JSON(http.StatusCreated, node)
 }
 
 func (a *API) rotateNode(c *gin.Context) {
@@ -97,7 +97,7 @@ func (a *API) rotateNode(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"credential": cred})
+	c.JSON(http.StatusOK, cred)
 }
 
 func (a *API) revokeNode(c *gin.Context) {
@@ -113,7 +113,7 @@ func (a *API) revokeNode(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	c.JSON(http.StatusOK, judging.Ok())
 }
 
 func (a *API) setRouting(c *gin.Context) {
@@ -136,7 +136,7 @@ func (a *API) setRouting(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	c.JSON(http.StatusOK, judging.Ok())
 }
 
 func (a *API) redispatch(c *gin.Context) {
@@ -152,7 +152,7 @@ func (a *API) redispatch(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	c.JSON(http.StatusOK, judging.Ok())
 }
 
 func (a *API) rejudge(c *gin.Context) {
@@ -176,7 +176,7 @@ func (a *API) rejudge(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusAccepted, gin.H{"batch_id": batch.ID, "state": batch.State})
+	c.JSON(http.StatusAccepted, batch)
 }
 
 func (a *API) switchBatch(c *gin.Context) {
@@ -192,5 +192,5 @@ func (a *API) switchBatch(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	c.JSON(http.StatusOK, judging.Ok())
 }

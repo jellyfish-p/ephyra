@@ -6,7 +6,7 @@ import (
 	"github.com/google/uuid"
 )
 
-func TestHighPriorityBusyDoesNotFallThrough(t *testing.T) {
+func TestBusyHighPriorityWaits(t *testing.T) {
 	hi, lo := uuid.New(), uuid.New()
 	dec, err := SelectPool([]PoolSnapshot{
 		{ID: hi, Priority: 10, Enabled: true, HasProfile: true, HealthyNodes: 1, FreeSlots: 0},
@@ -18,6 +18,10 @@ func TestHighPriorityBusyDoesNotFallThrough(t *testing.T) {
 	if !dec.Wait || dec.PoolID != uuid.Nil {
 		t.Fatalf("must wait on high priority, got %+v", dec)
 	}
+}
+
+func TestHighPriorityBusyDoesNotFallThrough(t *testing.T) {
+	TestBusyHighPriorityWaits(t)
 }
 
 func TestUnavailableHighFallsThrough(t *testing.T) {
