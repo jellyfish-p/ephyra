@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,10 +17,8 @@ import (
 )
 
 type Module struct {
-	DB      *gorm.DB
-	Clock   clock.Clock
-	Hub     *Hub
-	hubOnce sync.Once
+	DB    *gorm.DB
+	Clock clock.Clock
 }
 
 func (m *Module) Standings(ctx context.Context, p access.Principal, contestID uuid.UUID) ([]Standing, error) {
@@ -83,23 +80,6 @@ func (m *Module) CanReadSource(ctx context.Context, p access.Principal, sub pers
 		return apperr.New(apperr.Forbidden, "source is not visible")
 	}
 	return nil
-}
-
-func (m *Module) FeedbackLevel(ctx context.Context, p access.Principal, sub persist.Submission) View {
-	c, err := m.contest(ctx, sub.ContestID)
-	if err != nil {
-		return View{}
-	}
-	aud := m.audienceForSubmission(ctx, p, c, sub)
-	vis := m.visibility(c, aud)
-	vis.OwnSubmission = aud == access.AudienceSelf || aud == access.AudienceTeammate
-	var cp persist.ContestProblem
-	if err := m.DB.WithContext(ctx).First(&cp, "id = ?", sub.ContestProblemID).Error; err == nil {
-		_, displayed := m.loadResult(ctx, sub, cp)
-		vis.ScoringRevision = cp.ScoringRevisionID
-		vis.SubmissionRevision = displayed
-	}
-	return Visible(vis)
 }
 
 func (m *Module) ViewSubmission(ctx context.Context, p access.Principal, sub persist.Submission) (SubmissionPublic, View, error) {

@@ -96,30 +96,6 @@ func (m *Module) AddRevision(ctx context.Context, p access.Principal, problemID 
 	return rev, err
 }
 
-func (m *Module) Get(ctx context.Context, id uuid.UUID) (persist.Problem, error) {
-	var p persist.Problem
-	if err := m.DB.WithContext(ctx).First(&p, "id = ?", id).Error; err != nil {
-		return persist.Problem{}, apperr.New(apperr.NotFound, "problem not found")
-	}
-	return p, nil
-}
-
-func (m *Module) Revision(ctx context.Context, id uuid.UUID) (persist.JudgeDataRevision, error) {
-	var r persist.JudgeDataRevision
-	if err := m.DB.WithContext(ctx).First(&r, "id = ?", id).Error; err != nil {
-		return persist.JudgeDataRevision{}, apperr.New(apperr.NotFound, "revision not found")
-	}
-	return r, nil
-}
-
-func (m *Module) Config(rev persist.JudgeDataRevision) (NormalizedConfig, error) {
-	var cfg NormalizedConfig
-	if err := json.Unmarshal(rev.NormalizedConfig, &cfg); err != nil {
-		return NormalizedConfig{}, err
-	}
-	return cfg, nil
-}
-
 func (m *Module) writeFiles(ctx context.Context, tx *gorm.DB, revisionID uuid.UUID, pkg HydroPackage) error {
 	for _, f := range pkg.Files {
 		obj, err := m.putBlob(ctx, tx, f.Data, contentType(f.Name))

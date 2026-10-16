@@ -85,22 +85,6 @@ func (m *Module) Create(ctx context.Context, p access.Principal, in CreateInput)
 	return c, nil
 }
 
-func (m *Module) SetRule(ctx context.Context, p access.Principal, contestID uuid.UUID, rule domain.Rule) error {
-	return m.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		c, err := m.loadContest(tx, contestID)
-		if err != nil {
-			return err
-		}
-		if err := m.requireManage(ctx, p, c.OrganizationID); err != nil {
-			return err
-		}
-		if err := CanChangeRule(snap(c), m.now()); err != nil {
-			return err
-		}
-		return tx.Model(&c).Update("rule", string(rule)).Error
-	})
-}
-
 func (m *Module) AddProblem(ctx context.Context, p access.Principal, contestID, problemID, revisionID uuid.UUID, letter string) (persist.ContestProblem, error) {
 	letter = strings.ToUpper(strings.TrimSpace(letter))
 	var cp persist.ContestProblem
@@ -515,26 +499,6 @@ func (m *Module) SetSourcePublicAfter(ctx context.Context, p access.Principal, c
 		}
 		return tx.Model(&c).Update("source_public_after", public).Error
 	})
-}
-
-func (m *Module) Problems(ctx context.Context, contestID uuid.UUID) ([]persist.ContestProblem, error) {
-	var list []persist.ContestProblem
-	if err := m.DB.WithContext(ctx).Where("contest_id = ?", contestID).Order("letter").Find(&list).Error; err != nil {
-		return nil, err
-	}
-	return list, nil
-}
-
-func (m *Module) EntrantForAccount(ctx context.Context, contestID, accountID uuid.UUID) (persist.Entrant, persist.EntrantMember, error) {
-	var mem persist.EntrantMember
-	if err := m.DB.WithContext(ctx).Where("contest_id = ? AND account_id = ?", contestID, accountID).First(&mem).Error; err != nil {
-		return persist.Entrant{}, persist.EntrantMember{}, apperr.New(apperr.Forbidden, "not registered")
-	}
-	var en persist.Entrant
-	if err := m.DB.WithContext(ctx).First(&en, "id = ?", mem.EntrantID).Error; err != nil {
-		return persist.Entrant{}, persist.EntrantMember{}, err
-	}
-	return en, mem, nil
 }
 
 func (m *Module) loadContest(tx *gorm.DB, id uuid.UUID) (persist.Contest, error) {

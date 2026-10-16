@@ -47,9 +47,6 @@ func (a *API) contestEvents(c *gin.Context) {
 	c.Status(http.StatusOK)
 	flusher.Flush()
 
-	updates, cancel := a.Scoring.SubscribeUpdates()
-	defer cancel()
-
 	ping := time.NewTicker(ssePingEvery)
 	defer ping.Stop()
 	poll := time.NewTicker(ssePollEvery)
@@ -102,14 +99,6 @@ func (a *API) contestEvents(c *gin.Context) {
 		case <-ping.C:
 			writeSSEComment(c.Writer, "ping")
 			flusher.Flush()
-		case u, ok := <-updates:
-			if !ok {
-				return
-			}
-			if u.ContestID != id {
-				continue
-			}
-			emit(u.SubmissionID)
 		case <-poll.C:
 			pollOnce()
 		}

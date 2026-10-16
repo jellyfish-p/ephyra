@@ -249,18 +249,6 @@ func (m *Module) DecideJoin(ctx context.Context, p access.Principal, requestID u
 	})
 }
 
-func (m *Module) Membership(ctx context.Context, accountID, orgID uuid.UUID) (domain.OrgRole, error) {
-	var org persist.Organization
-	if err := m.DB.WithContext(ctx).First(&org, "id = ?", orgID).Error; err != nil {
-		return "", apperr.New(apperr.NotFound, "organization not found")
-	}
-	mem, ok := m.membershipOf(m.DB.WithContext(ctx), accountID, org.ID)
-	if !ok {
-		return "", apperr.New(apperr.Forbidden, "not an organization member")
-	}
-	return domain.OrgRole(mem.Role), nil
-}
-
 func (m *Module) MyMembership(ctx context.Context, p access.Principal, orgID uuid.UUID) (Membership, error) {
 	if p.Zero() {
 		return Membership{}, apperr.New(apperr.Unauthorized, "not signed in")
@@ -325,16 +313,6 @@ func (m *Module) ListJoinRequests(ctx context.Context, p access.Principal, orgID
 	return rows, nil
 }
 
-func (m *Module) CanManageOrg(ctx context.Context, p access.Principal, orgID uuid.UUID) error {
-	return m.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		org, err := m.loadOrg(tx, orgID)
-		if err != nil {
-			return err
-		}
-		return m.requireOrgManage(tx, p, org.ID)
-	})
-}
-
 func (m *Module) requireOrgManage(tx *gorm.DB, p access.Principal, orgID uuid.UUID) error {
 	mem, ok := m.membershipOf(tx, p.AccountID, orgID)
 	return AllowManageOrg(p, ok, domain.OrgRole(mem.Role))
@@ -356,14 +334,6 @@ func (m *Module) membershipOf(tx *gorm.DB, accountID, orgID uuid.UUID) (persist.
 
 func (m *Module) Organization(ctx context.Context, id uuid.UUID) (persist.Organization, error) {
 	return m.loadOrg(m.DB.WithContext(ctx), id)
-}
-
-func (m *Module) Account(ctx context.Context, id uuid.UUID) (persist.Account, error) {
-	var acc persist.Account
-	if err := m.DB.WithContext(ctx).First(&acc, "id = ?", id).Error; err != nil {
-		return persist.Account{}, apperr.New(apperr.NotFound, "account not found")
-	}
-	return acc, nil
 }
 
 func (m *Module) BootstrapAdmin(ctx context.Context, email, password string) error {
