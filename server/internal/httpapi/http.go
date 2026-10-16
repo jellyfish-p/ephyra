@@ -45,6 +45,7 @@ func (a *API) Router() *gin.Engine {
 	a.contestRoutes(r)
 	a.problemRoutes(r)
 	a.submitRoutes(r)
+	a.eventRoutes(r)
 	a.judgeRoutes(r)
 	return r
 }
