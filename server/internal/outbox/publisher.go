@@ -44,11 +44,7 @@ func (p *Publisher) flush(ctx context.Context) error {
 	for _, ev := range events {
 		if err := p.Redis.XAdd(ctx, &redis.XAddArgs{
 			Stream: Stream,
-			Values: map[string]any{
-				"event_id": ev.ID.String(),
-				"topic":    ev.Topic,
-				"payload":  string(ev.Payload),
-			},
+			Values: StreamFields(ev),
 		}).Err(); err != nil {
 			return err
 		}

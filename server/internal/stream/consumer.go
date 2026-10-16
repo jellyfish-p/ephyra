@@ -69,7 +69,7 @@ func (c *Consumer) handle(ctx context.Context, msg redis.XMessage) error {
 	if err := c.DB.WithContext(ctx).Where("event_id = ?", eventID).FirstOrCreate(&ins).Error; err != nil {
 		return err
 	}
-	if c.OnReady != nil {
+	if ApplyEvent(true).RunSchedule && c.OnReady != nil {
 		return c.OnReady(ctx)
 	}
 	return nil

@@ -14,16 +14,26 @@ import (
 )
 
 func (m *Module) Schedule(ctx context.Context) error {
-	var tasks []persist.JudgeTask
+	var rows []struct {
+		ID             uuid.UUID `gorm:"column:id"`
+		OrganizationID uuid.UUID `gorm:"column:organization_id"`
+		ReceiveSeq     int64     `gorm:"column:receive_seq"`
+	}
 	if err := m.DB.WithContext(ctx).
-		Where("state = ?", domain.TaskPendingSchedule).
-		Order("created_at").
-		Limit(50).
-		Find(&tasks).Error; err != nil {
+		Table("judge_tasks").
+		Select("judge_tasks.id, contests.organization_id, submissions.receive_seq").
+		Joins("JOIN submissions ON submissions.id = judge_tasks.submission_id").
+		Joins("JOIN contests ON contests.id = judge_tasks.contest_id").
+		Where("judge_tasks.state = ?", domain.TaskPendingSchedule).
+		Find(&rows).Error; err != nil {
 		return err
 	}
-	for _, t := range tasks {
-		if err := m.dispatchOne(ctx, t.ID); err != nil {
+	pending := make([]PendingWork, 0, len(rows))
+	for _, r := range rows {
+		pending = append(pending, PendingWork{TaskID: r.ID, OrgID: r.OrganizationID, ReceiveSeq: r.ReceiveSeq})
+	}
+	for _, t := range OrderPendingWork(pending) {
+		if err := m.dispatchOne(ctx, t.TaskID); err != nil {
 			continue
 		}
 	}
@@ -55,6 +65,7 @@ func (m *Module) ReapLost(ctx context.Context) error {
 func (m *Module) dispatchOne(ctx context.Context, taskID uuid.UUID) error {
 	var send *judgev1.ServerMessage
 	var nodeID uuid.UUID
+	var attemptID uuid.UUID
 	err := m.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var task persist.JudgeTask
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&task, "id = ?", taskID).Error; err != nil {
@@ -113,23 +124,32 @@ func (m *Module) dispatchOne(ctx context.Context, taskID uuid.UUID) error {
 		}
 		send = msg
 		nodeID = node.ID
+		attemptID = att.ID
 		return nil
 	})
 	if err != nil || send == nil {
 		return err
 	}
 	if !m.Hub.Dispatch(nodeID, send) {
-		return m.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-			if err := tx.Model(&persist.JudgingAttempt{}).
-				Where("task_id = ? AND state = ?", taskID, domain.AttemptDispatched).
-				Updates(map[string]any{"state": string(domain.AttemptInvalidated), "system_fault": true, "system_fault_kind": "send_failed"}).Error; err != nil {
-				return err
-			}
-			return tx.Model(&persist.JudgeTask{}).Where("id = ?", taskID).
-				Update("state", string(domain.TaskAwaitingAdmin)).Error
-		})
+		return m.markDispatchSendFailed(ctx, taskID, attemptID)
 	}
 	return nil
+}
+
+func (m *Module) markDispatchSendFailed(ctx context.Context, taskID, attemptID uuid.UUID) error {
+	attState, taskState, kind := DispatchSendFailure()
+	now := m.now()
+	return m.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&persist.JudgingAttempt{}).
+			Where("id = ? AND task_id = ?", attemptID, taskID).
+			Updates(map[string]any{
+				"state": string(attState), "system_fault": true, "system_fault_kind": kind, "finished_at": now,
+			}).Error; err != nil {
+			return err
+		}
+		return tx.Model(&persist.JudgeTask{}).Where("id = ?", taskID).
+			Update("state", string(taskState)).Error
+	})
 }
 
 func (m *Module) poolSnapshots(tx *gorm.DB, orgID uuid.UUID, profile string) ([]PoolSnapshot, *uuid.UUID, error) {
