@@ -14,7 +14,7 @@ func (a *API) orgRoutes(r *gin.Engine) {
 	r.GET("/api/organizations/:id/members", a.listMembers)
 	r.GET("/api/organizations/:id/membership", a.myMembership)
 	r.GET("/api/organizations/:id/join-requests", a.listJoinRequests)
-	r.POST("/api/organizations/:orgId/join-requests/:requestId/decision", a.decideJoin)
+	r.POST("/api/organizations/:id/join-requests/:requestId/decision", a.decideJoin)
 }
 
 func (a *API) createOrg(c *gin.Context) {
