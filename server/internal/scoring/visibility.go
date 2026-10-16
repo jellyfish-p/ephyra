@@ -3,22 +3,25 @@ package scoring
 import (
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jellyfish-p/ephyra/server/internal/access"
 	"github.com/jellyfish-p/ephyra/server/internal/domain"
 )
 
 type VisibilityInput struct {
-	Rule           domain.Rule
-	Phase          domain.ContestPhase
-	Now            time.Time
-	EndsAt         time.Time
-	FreezeFor      time.Duration // ACM freeze window before end; 0 disables
-	Granularity    domain.FeedbackGranularity
-	IOIPublicBoard bool
-	SourcePublic   bool
-	Published      bool
-	Audience       access.Audience
-	OwnSubmission  bool
+	Rule               domain.Rule
+	Phase              domain.ContestPhase
+	Now                time.Time
+	EndsAt             time.Time
+	FreezeFor          time.Duration // ACM freeze window before end; 0 disables
+	Granularity        domain.FeedbackGranularity
+	IOIPublicBoard     bool
+	SourcePublic       bool
+	Published          bool
+	Audience           access.Audience
+	OwnSubmission      bool
+	SubmissionRevision uuid.UUID
+	ScoringRevision    uuid.UUID
 }
 
 type FeedbackLevel int
@@ -29,6 +32,19 @@ const (
 	FeedbackScore
 	FeedbackFull
 )
+
+func (f FeedbackLevel) Name() string {
+	switch f {
+	case FeedbackCompileOnly:
+		return "compile"
+	case FeedbackScore:
+		return "score"
+	case FeedbackFull:
+		return "full"
+	default:
+		return "none"
+	}
+}
 
 type View struct {
 	Feedback     FeedbackLevel
@@ -41,7 +57,7 @@ type View struct {
 func Visible(in VisibilityInput) View {
 	admin := in.Audience == access.AudienceContestAdmin || in.Audience == access.AudienceOrgAdmin
 	self := in.Audience == access.AudienceSelf || in.Audience == access.AudienceTeammate
-	v := View{Granularity: in.Granularity}
+	v := View{Granularity: in.Granularity, NotEffective: revisionNotEffective(in)}
 
 	v.ShowSource = sourceVisible(in, admin, self)
 	if admin {
@@ -145,4 +161,11 @@ func FilterBoard(in VisibilityInput, solvedAfterFreeze bool, audience access.Aud
 		return true
 	}
 	return !solvedAfterFreeze
+}
+
+func revisionNotEffective(in VisibilityInput) bool {
+	if in.ScoringRevision == uuid.Nil || in.SubmissionRevision == uuid.Nil {
+		return false
+	}
+	return in.SubmissionRevision != in.ScoringRevision
 }

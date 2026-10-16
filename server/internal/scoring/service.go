@@ -3,6 +3,8 @@ package scoring
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -16,8 +18,10 @@ import (
 )
 
 type Module struct {
-	DB    *gorm.DB
-	Clock clock.Clock
+	DB      *gorm.DB
+	Clock   clock.Clock
+	Hub     *Hub
+	hubOnce sync.Once
 }
 
 func (m *Module) Standings(ctx context.Context, p access.Principal, contestID uuid.UUID) ([]Standing, error) {
@@ -87,7 +91,126 @@ func (m *Module) FeedbackLevel(ctx context.Context, p access.Principal, sub pers
 		return View{}
 	}
 	aud := m.audienceForSubmission(ctx, p, c, sub)
-	return Visible(m.visibility(c, aud))
+	vis := m.visibility(c, aud)
+	vis.OwnSubmission = aud == access.AudienceSelf || aud == access.AudienceTeammate
+	var cp persist.ContestProblem
+	if err := m.DB.WithContext(ctx).First(&cp, "id = ?", sub.ContestProblemID).Error; err == nil {
+		_, displayed := m.loadResult(ctx, sub, cp)
+		vis.ScoringRevision = cp.ScoringRevisionID
+		vis.SubmissionRevision = displayed
+	}
+	return Visible(vis)
+}
+
+func (m *Module) ViewSubmission(ctx context.Context, p access.Principal, sub persist.Submission) (SubmissionPublic, View, error) {
+	c, err := m.contest(ctx, sub.ContestID)
+	if err != nil {
+		return SubmissionPublic{}, View{}, err
+	}
+	var cp persist.ContestProblem
+	if err := m.DB.WithContext(ctx).First(&cp, "id = ?", sub.ContestProblemID).Error; err != nil {
+		return SubmissionPublic{}, View{}, apperr.New(apperr.NotFound, "contest problem not found")
+	}
+	detail, displayed := m.loadResult(ctx, sub, cp)
+	aud := m.audienceForSubmission(ctx, p, c, sub)
+	vis := m.visibility(c, aud)
+	vis.OwnSubmission = aud == access.AudienceSelf || aud == access.AudienceTeammate
+	vis.ScoringRevision = cp.ScoringRevisionID
+	vis.SubmissionRevision = displayed
+	view := Visible(vis)
+	meta := SubmissionMeta{
+		ID: sub.ID, ContestID: sub.ContestID, EntrantID: sub.EntrantID,
+		SubmitterAccountID: sub.SubmitterAccountID, LanguageID: sub.LanguageID,
+		ReceivedAt: sub.ReceivedAt, ReceiveSeq: sub.ReceiveSeq, RevisionID: displayed,
+	}
+	return ProjectSubmission(meta, view, detail), view, nil
+}
+
+func (m *Module) WatchContest(ctx context.Context, contestID uuid.UUID) (map[uuid.UUID]string, error) {
+	var subs []persist.Submission
+	if err := m.DB.WithContext(ctx).Select("id", "judge_data_revision_id").Where("contest_id = ?", contestID).Find(&subs).Error; err != nil {
+		return nil, err
+	}
+	out := make(map[uuid.UUID]string, len(subs))
+	ids := make([]uuid.UUID, 0, len(subs))
+	for _, s := range subs {
+		ids = append(ids, s.ID)
+		out[s.ID] = s.JudgeDataRevisionID.String()
+	}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	var results []persist.SubmissionResult
+	if err := m.DB.WithContext(ctx).Where("submission_id IN ?", ids).Find(&results).Error; err != nil {
+		return nil, err
+	}
+	for _, sr := range results {
+		out[sr.SubmissionID] += fmt.Sprintf("|%s:%s:%d:%t:%s", sr.RevisionID, sr.Verdict, sr.ScoreHundredths, sr.SystemFault, sr.AttemptID)
+	}
+	return out, nil
+}
+
+func (m *Module) loadResult(ctx context.Context, sub persist.Submission, cp persist.ContestProblem) (*ResultDetail, uuid.UUID) {
+	order := []uuid.UUID{cp.TargetRevisionID, sub.JudgeDataRevisionID, cp.ScoringRevisionID}
+	seen := map[uuid.UUID]struct{}{}
+	for _, rev := range order {
+		if rev == uuid.Nil {
+			continue
+		}
+		if _, ok := seen[rev]; ok {
+			continue
+		}
+		seen[rev] = struct{}{}
+		var sr persist.SubmissionResult
+		if err := m.DB.WithContext(ctx).Where("submission_id = ? AND revision_id = ?", sub.ID, rev).First(&sr).Error; err != nil {
+			continue
+		}
+		d := resultDetailFrom(sr)
+		m.attachCases(ctx, &d, sr.AttemptID)
+		return &d, rev
+	}
+	return nil, sub.JudgeDataRevisionID
+}
+
+func resultDetailFrom(sr persist.SubmissionResult) ResultDetail {
+	var stored []SubtaskOutcome
+	_ = json.Unmarshal(sr.SubtaskScores, &stored)
+	return ResultDetail{
+		HasResult:     true,
+		RevisionID:    sr.RevisionID,
+		Verdict:       domain.Verdict(sr.Verdict),
+		Score:         exact.FromHundredths(sr.ScoreHundredths),
+		Subtasks:      stored,
+		SystemFault:   sr.SystemFault,
+		CompileFailed: domain.Verdict(sr.Verdict) == domain.VerdictCompilationError,
+	}
+}
+
+func (m *Module) attachCases(ctx context.Context, d *ResultDetail, attemptID uuid.UUID) {
+	if attemptID == uuid.Nil {
+		return
+	}
+	var att persist.JudgingAttempt
+	if err := m.DB.WithContext(ctx).First(&att, "id = ?", attemptID).Error; err != nil || len(att.Result) == 0 {
+		return
+	}
+	var raw struct {
+		Cases          []CaseOutcome `json:"Cases"`
+		CompilerFailed bool          `json:"CompilerFailed"`
+	}
+	if json.Unmarshal(att.Result, &raw) != nil {
+		return
+	}
+	if len(raw.Cases) > 0 {
+		cases := make([]CaseOutcome, 0, len(raw.Cases))
+		for _, c := range raw.Cases {
+			cases = append(cases, CaseOutcome{CaseID: c.CaseID, Verdict: c.Verdict})
+		}
+		d.Cases = cases
+	}
+	if raw.CompilerFailed {
+		d.CompileFailed = true
+	}
 }
 
 func (m *Module) contest(ctx context.Context, id uuid.UUID) (persist.Contest, error) {

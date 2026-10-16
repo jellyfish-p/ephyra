@@ -69,12 +69,10 @@ func (a *API) getSubmission(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	view := a.Scoring.FeedbackLevel(c.Request.Context(), p, sub)
-	out := gin.H{
-		"id": sub.ID, "contest_id": sub.ContestID, "entrant_id": sub.EntrantID,
-		"submitter_account_id": sub.SubmitterAccountID, "language_id": sub.LanguageID,
-		"received_at": sub.ReceivedAt, "receive_seq": sub.ReceiveSeq,
-		"revision_id": sub.JudgeDataRevisionID, "feedback": view.Feedback,
+	out, _, err := a.Scoring.ViewSubmission(c.Request.Context(), p, sub)
+	if err != nil {
+		writeErr(c, err)
+		return
 	}
 	c.JSON(http.StatusOK, out)
 }
