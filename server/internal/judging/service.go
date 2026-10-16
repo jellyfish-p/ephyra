@@ -440,14 +440,6 @@ func (m *Module) SwitchRejudge(ctx context.Context, p access.Principal, batchID 
 	})
 }
 
-func (m *Module) Object(ctx context.Context, id uuid.UUID) (BlobRef, error) {
-	var obj persist.Object
-	if err := m.DB.WithContext(ctx).First(&obj, "id = ?", id).Error; err != nil {
-		return BlobRef{}, apperr.New(apperr.NotFound, "object not found")
-	}
-	return blobRef(obj), nil
-}
-
 func (m *Module) OpenFile(ctx context.Context, rawToken string) (BlobRef, error) {
 	var g persist.DownloadGrant
 	if err := m.DB.WithContext(ctx).Where("token_hash = ?", sec.HashToken(rawToken)).First(&g).Error; err != nil {
