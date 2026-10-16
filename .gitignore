@@ -1,0 +1,14 @@
+.env
+*.exe
+*.test
+*.out
+bin/
+dist/
+coverage.out
+__debug_bin*
+server/ephyra
+server/ephyra.exe
+.idea/
+.vscode/
+*.swp
+thumbs.db

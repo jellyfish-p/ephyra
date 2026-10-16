@@ -1,0 +1,134 @@
+syntax = "proto3";
+
+package ephyra.judge.v1;
+
+option go_package = "github.com/jellyfish-p/ephyra/protocol/judge/v1;judgev1";
+
+// JudgeControl is opened by the node. The node must send HandshakeRequest first.
+// Time fields use milliseconds; memory fields use bytes. Do not add an untyped
+// "time" or "memory" field.
+service JudgeControl {
+  rpc Connect(stream NodeMessage) returns (stream ServerMessage);
+}
+
+message NodeMessage {
+  oneof body {
+    HandshakeRequest handshake = 1;
+    Heartbeat heartbeat = 2;
+    AttemptProgress progress = 3;
+    AttemptResult result = 4;
+    SlotReport slots = 5;
+  }
+}
+
+message ServerMessage {
+  oneof body {
+    HandshakeResponse handshake = 1;
+    HeartbeatAck heartbeat_ack = 2;
+    DispatchAttempt dispatch = 3;
+    InvalidateAttempt invalidate = 4;
+  }
+}
+
+message HandshakeRequest {
+  // Major protocol version. Nodes speaking an unsupported major version are refused.
+  string protocol_version = 1;
+  string node_id = 2;
+  string credential = 3;
+  repeated string execution_profile_ids = 4;
+  int32 max_slots = 5;
+}
+
+message HandshakeResponse {
+  bool accepted = 1;
+  string reject_reason = 2;
+  string protocol_version = 3;
+  int32 heartbeat_interval_ms = 4;
+  int32 lease_ms = 5;
+}
+
+message Heartbeat {
+  int64 unix_ms = 1;
+  int32 busy_slots = 2;
+  int32 free_slots = 3;
+  repeated string active_attempt_ids = 4;
+}
+
+message HeartbeatAck {
+  int64 unix_ms = 1;
+  // Node must stop these attempts and reclaim local resources before reporting free slots.
+  repeated string invalidate_attempt_ids = 2;
+}
+
+message FileRef {
+  string object_id = 1;
+  string sha256_hex = 2;
+  int64 size_bytes = 3;
+  string download_url = 4;
+}
+
+message DispatchAttempt {
+  string attempt_id = 1;
+  string task_id = 2;
+  int32 generation = 3;
+  string judge_data_revision_id = 4;
+  string execution_profile_id = 5;
+  string language_id = 6;
+  FileRef source = 7;
+  repeated FileRef data_files = 8;
+  string normalized_config_json = 9;
+  int64 time_limit_ms = 10;
+  int64 memory_limit_bytes = 11;
+}
+
+message InvalidateAttempt {
+  string attempt_id = 1;
+  int32 generation = 2;
+  string reason = 3;
+}
+
+message AttemptProgress {
+  string attempt_id = 1;
+  int32 generation = 2;
+  string stage = 3;
+}
+
+message CaseResult {
+  string case_id = 1;
+  string verdict = 2;
+  int64 time_ms = 3;
+  int64 wall_time_ms = 4;
+  int64 memory_bytes = 5;
+  int32 exit_code = 6;
+}
+
+message SubtaskResult {
+  string subtask_id = 1;
+  // Decimal string with at most two fractional digits.
+  string score = 2;
+  string verdict = 3;
+}
+
+message AttemptResult {
+  string attempt_id = 1;
+  string task_id = 2;
+  int32 generation = 3;
+  string judge_data_revision_id = 4;
+  string execution_profile_id = 5;
+  string node_id = 6;
+  string verdict = 7;
+  string score = 8;
+  bool compiler_failed = 9;
+  bool system_fault = 10;
+  string system_fault_kind = 11;
+  repeated CaseResult cases = 12;
+  repeated SubtaskResult subtasks = 13;
+  int64 time_ms = 14;
+  int64 memory_bytes = 15;
+}
+
+message SlotReport {
+  int32 busy_slots = 1;
+  int32 free_slots = 2;
+  repeated string active_attempt_ids = 3;
+}
