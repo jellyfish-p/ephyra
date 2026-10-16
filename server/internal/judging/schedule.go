@@ -251,6 +251,7 @@ func (m *Module) buildDispatch(ctx context.Context, tx *gorm.DB, task persist.Ju
 		}
 		dataRefs = append(dataRefs, &judgev1.FileRef{
 			ObjectId: obj.ID.String(), Sha256Hex: obj.SHA256, SizeBytes: obj.SizeBytes, DownloadUrl: url,
+			Name: f.Name, Role: f.Role,
 		})
 	}
 	var rev persist.JudgeDataRevision
@@ -265,7 +266,7 @@ func (m *Module) buildDispatch(ctx context.Context, tx *gorm.DB, task persist.Ju
 		AttemptId: att.ID.String(), TaskId: task.ID.String(), Generation: int32(att.Generation),
 		JudgeDataRevisionId: task.JudgeDataRevisionID.String(), ExecutionProfileId: task.ExecutionProfileID,
 		LanguageId: sub.LanguageID,
-		Source:     &judgev1.FileRef{ObjectId: src.ID.String(), Sha256Hex: src.SHA256, SizeBytes: src.SizeBytes, DownloadUrl: srcURL},
+		Source:     &judgev1.FileRef{ObjectId: src.ID.String(), Sha256Hex: src.SHA256, SizeBytes: src.SizeBytes, DownloadUrl: srcURL, Name: "source", Role: "source"},
 		DataFiles:  dataRefs, NormalizedConfigJson: string(rev.NormalizedConfig),
 		TimeLimitMs: cfg.TimeLimitMS, MemoryLimitBytes: cfg.MemoryLimitBytes,
 	}}}, nil

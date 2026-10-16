@@ -65,6 +65,11 @@ message FileRef {
   string sha256_hex = 2;
   int64 size_bytes = 3;
   string download_url = 4;
+  // Basename used by normalized config. Required for data files so the node
+  // can bind input_name, output_name, and checker source.
+  string name = 5;
+  // One of: source, data, checker, interactor.
+  string role = 6;
 }
 
 message DispatchAttempt {

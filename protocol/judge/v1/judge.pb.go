@@ -540,11 +540,16 @@ func (x *HeartbeatAck) GetInvalidateAttemptIds() []string {
 }
 
 type FileRef struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ObjectId      string                 `protobuf:"bytes,1,opt,name=object_id,json=objectId,proto3" json:"object_id,omitempty"`
-	Sha256Hex     string                 `protobuf:"bytes,2,opt,name=sha256_hex,json=sha256Hex,proto3" json:"sha256_hex,omitempty"`
-	SizeBytes     int64                  `protobuf:"varint,3,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
-	DownloadUrl   string                 `protobuf:"bytes,4,opt,name=download_url,json=downloadUrl,proto3" json:"download_url,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	ObjectId    string                 `protobuf:"bytes,1,opt,name=object_id,json=objectId,proto3" json:"object_id,omitempty"`
+	Sha256Hex   string                 `protobuf:"bytes,2,opt,name=sha256_hex,json=sha256Hex,proto3" json:"sha256_hex,omitempty"`
+	SizeBytes   int64                  `protobuf:"varint,3,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
+	DownloadUrl string                 `protobuf:"bytes,4,opt,name=download_url,json=downloadUrl,proto3" json:"download_url,omitempty"`
+	// Basename used by normalized config. Required for data files so the node
+	// can bind input_name, output_name, and checker source.
+	Name string `protobuf:"bytes,5,opt,name=name,proto3" json:"name,omitempty"`
+	// One of: source, data, checker, interactor.
+	Role          string `protobuf:"bytes,6,opt,name=role,proto3" json:"role,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -603,6 +608,20 @@ func (x *FileRef) GetSizeBytes() int64 {
 func (x *FileRef) GetDownloadUrl() string {
 	if x != nil {
 		return x.DownloadUrl
+	}
+	return ""
+}
+
+func (x *FileRef) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *FileRef) GetRole() string {
+	if x != nil {
+		return x.Role
 	}
 	return ""
 }
@@ -1255,14 +1274,16 @@ const file_judge_v1_judge_proto_rawDesc = "" +
 	"\x12active_attempt_ids\x18\x04 \x03(\tR\x10activeAttemptIds\"]\n" +
 	"\fHeartbeatAck\x12\x17\n" +
 	"\aunix_ms\x18\x01 \x01(\x03R\x06unixMs\x124\n" +
-	"\x16invalidate_attempt_ids\x18\x02 \x03(\tR\x14invalidateAttemptIds\"\x87\x01\n" +
+	"\x16invalidate_attempt_ids\x18\x02 \x03(\tR\x14invalidateAttemptIds\"\xaf\x01\n" +
 	"\aFileRef\x12\x1b\n" +
 	"\tobject_id\x18\x01 \x01(\tR\bobjectId\x12\x1d\n" +
 	"\n" +
 	"sha256_hex\x18\x02 \x01(\tR\tsha256Hex\x12\x1d\n" +
 	"\n" +
 	"size_bytes\x18\x03 \x01(\x03R\tsizeBytes\x12!\n" +
-	"\fdownload_url\x18\x04 \x01(\tR\vdownloadUrl\"\xe4\x03\n" +
+	"\fdownload_url\x18\x04 \x01(\tR\vdownloadUrl\x12\x12\n" +
+	"\x04name\x18\x05 \x01(\tR\x04name\x12\x12\n" +
+	"\x04role\x18\x06 \x01(\tR\x04role\"\xe4\x03\n" +
 	"\x0fDispatchAttempt\x12\x1d\n" +
 	"\n" +
 	"attempt_id\x18\x01 \x01(\tR\tattemptId\x12\x17\n" +
