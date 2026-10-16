@@ -40,13 +40,13 @@ type CreateInput struct {
 
 func (m *Module) now() time.Time { return m.Clock.Now().UTC() }
 
-func (m *Module) Create(ctx context.Context, p access.Principal, in CreateInput) (persist.Contest, error) {
+func (m *Module) Create(ctx context.Context, p access.Principal, in CreateInput) (View, error) {
 	var org persist.Organization
 	if err := m.DB.WithContext(ctx).First(&org, "id = ?", in.OrganizationID).Error; err != nil {
-		return persist.Contest{}, apperr.New(apperr.NotFound, "organization not found")
+		return View{}, apperr.New(apperr.NotFound, "organization not found")
 	}
 	if err := m.requireManage(ctx, p, org.ID); err != nil {
-		return persist.Contest{}, err
+		return View{}, err
 	}
 	if in.MaxTeamSize < 1 {
 		in.MaxTeamSize = 1
@@ -61,7 +61,7 @@ func (m *Module) Create(ctx context.Context, p access.Principal, in CreateInput)
 		in.CaseFeedback = domain.FeedbackSubtasks
 	}
 	if !in.EndsAt.After(in.StartsAt) {
-		return persist.Contest{}, apperr.New(apperr.Invalid, "end must be after start")
+		return View{}, apperr.New(apperr.Invalid, "end must be after start")
 	}
 	now := m.now()
 	c := persist.Contest{
@@ -77,15 +77,15 @@ func (m *Module) Create(ctx context.Context, p access.Principal, in CreateInput)
 		CreatedAt:              now,
 	}
 	if c.Slug == "" || c.Title == "" {
-		return persist.Contest{}, apperr.New(apperr.Invalid, "slug and title are required")
+		return View{}, apperr.New(apperr.Invalid, "slug and title are required")
 	}
 	if err := m.DB.WithContext(ctx).Create(&c).Error; err != nil {
-		return persist.Contest{}, apperr.New(apperr.Conflict, "could not create contest")
+		return View{}, apperr.New(apperr.Conflict, "could not create contest")
 	}
-	return c, nil
+	return viewOf(c), nil
 }
 
-func (m *Module) AddProblem(ctx context.Context, p access.Principal, contestID, problemID, revisionID uuid.UUID, letter string) (persist.ContestProblem, error) {
+func (m *Module) AddProblem(ctx context.Context, p access.Principal, contestID, problemID, revisionID uuid.UUID, letter string) (AddedProblem, error) {
 	letter = strings.ToUpper(strings.TrimSpace(letter))
 	var cp persist.ContestProblem
 	err := m.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -113,10 +113,13 @@ func (m *Module) AddProblem(ctx context.Context, p access.Principal, contestID, 
 		}
 		return nil
 	})
-	return cp, err
+	if err != nil {
+		return AddedProblem{}, err
+	}
+	return AddedProblem{ID: cp.ID, Letter: cp.Letter, ProblemID: cp.ProblemID, RevisionID: cp.ScoringRevisionID}, nil
 }
 
-func (m *Module) RegisterIndividual(ctx context.Context, p access.Principal, contestID uuid.UUID) (persist.Entrant, error) {
+func (m *Module) RegisterIndividual(ctx context.Context, p access.Principal, contestID uuid.UUID) (EntrantView, error) {
 	var out persist.Entrant
 	err := m.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		c, err := m.loadContest(tx, contestID)
@@ -158,10 +161,13 @@ func (m *Module) RegisterIndividual(ctx context.Context, p access.Principal, con
 		}
 		return nil
 	})
-	return out, err
+	if err != nil {
+		return EntrantView{}, err
+	}
+	return EntrantView{ID: out.ID, Status: out.Status}, nil
 }
 
-func (m *Module) CreateTeam(ctx context.Context, p access.Principal, contestID uuid.UUID, name string) (persist.Entrant, error) {
+func (m *Module) CreateTeam(ctx context.Context, p access.Principal, contestID uuid.UUID, name string) (EntrantView, error) {
 	name = strings.TrimSpace(name)
 	var out persist.Entrant
 	err := m.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -194,7 +200,10 @@ func (m *Module) CreateTeam(ctx context.Context, p access.Principal, contestID u
 		}
 		return nil
 	})
-	return out, err
+	if err != nil {
+		return EntrantView{}, err
+	}
+	return EntrantView{ID: out.ID, Status: out.Status}, nil
 }
 
 func (m *Module) Invite(ctx context.Context, p access.Principal, entrantID, accountID uuid.UUID) error {
@@ -363,7 +372,7 @@ func (m *Module) Get(ctx context.Context, p access.Principal, id uuid.UUID) (Vie
 	if err := CanViewContest(c.AllowExternal, !p.Zero(), a); err != nil {
 		return View{}, err
 	}
-	return ViewOf(c), nil
+	return viewOf(c), nil
 }
 
 func (m *Module) ListByOrganization(ctx context.Context, p access.Principal, orgID uuid.UUID) ([]View, error) {
@@ -565,7 +574,7 @@ func (m *Module) accessFor(ctx context.Context, p access.Principal, c persist.Co
 func viewsOf(contests []persist.Contest) []View {
 	out := make([]View, 0, len(contests))
 	for _, c := range contests {
-		out = append(out, ViewOf(c))
+		out = append(out, viewOf(c))
 	}
 	return out
 }

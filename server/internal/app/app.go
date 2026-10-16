@@ -89,7 +89,7 @@ func Run() error {
 	pr := &problem.Module{DB: db, Clock: clk, Blobs: blobs}
 	sub := &submission.Module{DB: db, Clock: clk, Blobs: blobs}
 	jg := judging.New(db, clk, blobs, cfg.PublicURL)
-	if _, err := jg.EnsureSystemPool(ctx); err != nil {
+	if err := jg.EnsureSystemPool(ctx); err != nil {
 		return err
 	}
 	sc := &scoring.Module{DB: db, Clock: clk}

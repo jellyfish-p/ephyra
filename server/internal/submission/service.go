@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jellyfish-p/ephyra/server/internal/access"
@@ -27,8 +28,16 @@ type Module struct {
 }
 
 type AcceptResult struct {
-	Submission persist.Submission
-	Task       persist.JudgeTask
+	SubmissionID uuid.UUID
+	ReceiveSeq   int64
+	ReceivedAt   time.Time
+	TaskID       uuid.UUID
+}
+
+type BlobRef struct {
+	StorageKey  string
+	SHA256      string
+	ContentType string
 }
 
 func (m *Module) Submit(ctx context.Context, p access.Principal, contestID uuid.UUID, letter, language string, source []byte) (AcceptResult, error) {
@@ -122,16 +131,22 @@ func (m *Module) Submit(ctx context.Context, p access.Principal, contestID uuid.
 		if err := tx.Create(&ev).Error; err != nil {
 			return err
 		}
-		out = AcceptResult{Submission: sub, Task: task}
+		out = AcceptResult{
+			SubmissionID: sub.ID, ReceiveSeq: sub.ReceiveSeq, ReceivedAt: sub.ReceivedAt, TaskID: task.ID,
+		}
 		return nil
 	})
 	return out, err
 }
 
-func (m *Module) Get(ctx context.Context, id uuid.UUID) (persist.Submission, error) {
+func (m *Module) SourceBlob(ctx context.Context, id uuid.UUID) (BlobRef, error) {
 	var s persist.Submission
 	if err := m.DB.WithContext(ctx).First(&s, "id = ?", id).Error; err != nil {
-		return persist.Submission{}, apperr.New(apperr.NotFound, "submission not found")
+		return BlobRef{}, apperr.New(apperr.NotFound, "submission not found")
 	}
-	return s, nil
+	var obj persist.Object
+	if err := m.DB.WithContext(ctx).First(&obj, "id = ?", s.SourceObjectID).Error; err != nil {
+		return BlobRef{}, apperr.New(apperr.NotFound, "object not found")
+	}
+	return BlobRef{StorageKey: obj.StorageKey, SHA256: obj.SHA256, ContentType: obj.ContentType}, nil
 }

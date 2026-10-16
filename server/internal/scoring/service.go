@@ -65,7 +65,19 @@ func (m *Module) TryPublish(ctx context.Context) error {
 	return nil
 }
 
-func (m *Module) CanReadSource(ctx context.Context, p access.Principal, sub persist.Submission) error {
+func (m *Module) loadSubmission(ctx context.Context, id uuid.UUID) (persist.Submission, error) {
+	var sub persist.Submission
+	if err := m.DB.WithContext(ctx).First(&sub, "id = ?", id).Error; err != nil {
+		return persist.Submission{}, apperr.New(apperr.NotFound, "submission not found")
+	}
+	return sub, nil
+}
+
+func (m *Module) CanReadSource(ctx context.Context, p access.Principal, submissionID uuid.UUID) error {
+	sub, err := m.loadSubmission(ctx, submissionID)
+	if err != nil {
+		return err
+	}
 	c, err := m.contest(ctx, sub.ContestID)
 	if err != nil {
 		return err
@@ -82,7 +94,11 @@ func (m *Module) CanReadSource(ctx context.Context, p access.Principal, sub pers
 	return nil
 }
 
-func (m *Module) ViewSubmission(ctx context.Context, p access.Principal, sub persist.Submission) (SubmissionPublic, View, error) {
+func (m *Module) ViewSubmission(ctx context.Context, p access.Principal, submissionID uuid.UUID) (SubmissionPublic, View, error) {
+	sub, err := m.loadSubmission(ctx, submissionID)
+	if err != nil {
+		return SubmissionPublic{}, View{}, err
+	}
 	c, err := m.contest(ctx, sub.ContestID)
 	if err != nil {
 		return SubmissionPublic{}, View{}, err

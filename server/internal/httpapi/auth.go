@@ -70,7 +70,7 @@ func (a *API) login(c *gin.Context) {
 	a.setSession(c, info)
 	c.JSON(http.StatusOK, gin.H{
 		"account_id": info.Account.ID, "email": info.Account.Email,
-		"display_name": info.Account.DisplayName, "email_verified": info.Account.EmailVerifiedAt != nil,
+		"display_name": info.Account.DisplayName, "email_verified": info.Account.EmailVerified,
 		"site_admin": info.Account.SiteAdmin,
 	})
 }

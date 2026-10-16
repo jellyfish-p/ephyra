@@ -57,15 +57,11 @@ func (a *API) contestEvents(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	emit := func(submissionID uuid.UUID) {
-		sub, err := a.Submission.Get(ctx, submissionID)
-		if err != nil {
-			return
-		}
-		if sub.ContestID != id {
-			return
-		}
-		dto, view, err := a.Scoring.ViewSubmission(ctx, p, sub)
+		dto, view, err := a.Scoring.ViewSubmission(ctx, p, submissionID)
 		if err != nil || !scoring.ShouldEmit(view) {
+			return
+		}
+		if dto.ContestID != id {
 			return
 		}
 		_ = writeSSEData(c.Writer, "submission", dto)

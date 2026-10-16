@@ -35,7 +35,7 @@ type SessionInfo struct {
 	RawToken   string
 	CSRFSecret string
 	ExpiresAt  time.Time
-	Account    persist.Account
+	Account    AccountView
 }
 
 func (m *Module) now() time.Time { return m.Clock.Now().UTC() }
@@ -87,28 +87,28 @@ func (m *Module) Logout(ctx context.Context, rawToken string) error {
 		Update("revoked_at", now).Error
 }
 
-func (m *Module) Resolve(ctx context.Context, rawToken string) (access.Principal, persist.Session, error) {
+func (m *Module) Resolve(ctx context.Context, rawToken string) (access.Principal, string, error) {
 	if rawToken == "" {
-		return access.Principal{}, persist.Session{}, apperr.New(apperr.Unauthorized, "not signed in")
+		return access.Principal{}, "", apperr.New(apperr.Unauthorized, "not signed in")
 	}
 	var sess persist.Session
 	if err := m.DB.WithContext(ctx).Where("token_hash = ?", sec.HashToken(rawToken)).First(&sess).Error; err != nil {
-		return access.Principal{}, persist.Session{}, apperr.New(apperr.Unauthorized, "not signed in")
+		return access.Principal{}, "", apperr.New(apperr.Unauthorized, "not signed in")
 	}
 	now := m.now()
 	if sess.RevokedAt != nil || now.After(sess.ExpiresAt) {
-		return access.Principal{}, persist.Session{}, apperr.New(apperr.Unauthorized, "session expired")
+		return access.Principal{}, "", apperr.New(apperr.Unauthorized, "session expired")
 	}
 	var acc persist.Account
 	if err := m.DB.WithContext(ctx).First(&acc, "id = ?", sess.AccountID).Error; err != nil || acc.DisabledAt != nil {
-		return access.Principal{}, persist.Session{}, apperr.New(apperr.Unauthorized, "not signed in")
+		return access.Principal{}, "", apperr.New(apperr.Unauthorized, "not signed in")
 	}
 	_ = m.DB.WithContext(ctx).Model(&sess).Update("last_seen_at", now).Error
 	p := access.Principal{
 		AccountID: acc.ID, Email: acc.Email, DisplayName: acc.DisplayName,
 		EmailVerified: acc.EmailVerifiedAt != nil, SiteAdmin: acc.SiteAdmin,
 	}
-	return p, sess, nil
+	return p, sess.CSRFSecret, nil
 }
 
 func (m *Module) VerifyEmail(ctx context.Context, rawToken string) error {
@@ -154,14 +154,14 @@ func (m *Module) ResetPassword(ctx context.Context, rawToken, password string) e
 	})
 }
 
-func (m *Module) CreateOrganization(ctx context.Context, p access.Principal, slug, name string) (persist.Organization, error) {
+func (m *Module) CreateOrganization(ctx context.Context, p access.Principal, slug, name string) (OrganizationView, error) {
 	if !p.SiteAdmin {
-		return persist.Organization{}, apperr.New(apperr.Forbidden, "only site admins can create organizations")
+		return OrganizationView{}, apperr.New(apperr.Forbidden, "only site admins can create organizations")
 	}
 	slug = strings.ToLower(strings.TrimSpace(slug))
 	name = strings.TrimSpace(name)
 	if slug == "" || name == "" {
-		return persist.Organization{}, apperr.New(apperr.Invalid, "slug and name are required")
+		return OrganizationView{}, apperr.New(apperr.Invalid, "slug and name are required")
 	}
 	now := m.now()
 	org := persist.Organization{ID: uuid.New(), Slug: slug, Name: name, CreatedAt: now}
@@ -183,7 +183,10 @@ func (m *Module) CreateOrganization(ctx context.Context, p access.Principal, slu
 			ActorID: &p.AccountID, Action: "organization.create", OrganizationID: &org.ID, CreatedAt: now,
 		})
 	})
-	return org, err
+	if err != nil {
+		return OrganizationView{}, err
+	}
+	return OrganizationView{ID: org.ID, Slug: org.Slug, Name: org.Name}, nil
 }
 
 func (m *Module) ApplyToJoin(ctx context.Context, p access.Principal, orgID uuid.UUID) error {
@@ -332,8 +335,12 @@ func (m *Module) membershipOf(tx *gorm.DB, accountID, orgID uuid.UUID) (persist.
 	return mem, err == nil
 }
 
-func (m *Module) Organization(ctx context.Context, id uuid.UUID) (persist.Organization, error) {
-	return m.loadOrg(m.DB.WithContext(ctx), id)
+func (m *Module) Organization(ctx context.Context, id uuid.UUID) (OrganizationView, error) {
+	org, err := m.loadOrg(m.DB.WithContext(ctx), id)
+	if err != nil {
+		return OrganizationView{}, err
+	}
+	return OrganizationView{ID: org.ID, Slug: org.Slug, Name: org.Name}, nil
 }
 
 func (m *Module) BootstrapAdmin(ctx context.Context, email, password string) error {
@@ -378,7 +385,13 @@ func (m *Module) createSession(ctx context.Context, acc persist.Account, ip, ua 
 	if err := m.DB.WithContext(ctx).Create(&sess).Error; err != nil {
 		return SessionInfo{}, err
 	}
-	return SessionInfo{RawToken: raw, CSRFSecret: csrf, ExpiresAt: sess.ExpiresAt, Account: acc}, nil
+	return SessionInfo{
+		RawToken: raw, CSRFSecret: csrf, ExpiresAt: sess.ExpiresAt,
+		Account: AccountView{
+			ID: acc.ID, Email: acc.Email, DisplayName: acc.DisplayName,
+			EmailVerified: acc.EmailVerifiedAt != nil, SiteAdmin: acc.SiteAdmin,
+		},
+	}, nil
 }
 
 func (m *Module) issueEmail(ctx context.Context, acc persist.Account, kind string, ttl time.Duration) error {

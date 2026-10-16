@@ -80,7 +80,7 @@ func (a *API) createContest(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, contestDTO(contest.ViewOf(ct)))
+	c.JSON(http.StatusCreated, contestDTO(ct))
 }
 
 func (a *API) listOrgContests(c *gin.Context) {
@@ -232,7 +232,7 @@ func (a *API) addContestProblem(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"id": cp.ID, "letter": cp.Letter, "problem_id": cp.ProblemID, "revision_id": cp.ScoringRevisionID})
+	c.JSON(http.StatusCreated, gin.H{"id": cp.ID, "letter": cp.Letter, "problem_id": cp.ProblemID, "revision_id": cp.RevisionID})
 }
 
 func (a *API) registerIndividual(c *gin.Context) {
@@ -408,12 +408,12 @@ func (a *API) importProblem(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	prob, rev, err := a.Problem.ImportHydro(c.Request.Context(), p, orgID, c.PostForm("slug"), c.PostForm("title"), body)
+	res, err := a.Problem.ImportHydro(c.Request.Context(), p, orgID, c.PostForm("slug"), c.PostForm("title"), body)
 	if err != nil {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"problem_id": prob.ID, "revision_id": rev.ID, "revision_n": rev.RevisionN})
+	c.JSON(http.StatusCreated, gin.H{"problem_id": res.ProblemID, "revision_id": res.RevisionID, "revision_n": res.RevisionN})
 }
 
 func (a *API) addRevision(c *gin.Context) {

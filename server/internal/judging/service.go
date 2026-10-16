@@ -163,9 +163,9 @@ type RoutingEntry struct {
 	Priority int
 }
 
-func (m *Module) Handshake(ctx context.Context, req *judgev1.HandshakeRequest) (persist.JudgeNode, *judgev1.HandshakeResponse, error) {
-	rej := func(reason string) (persist.JudgeNode, *judgev1.HandshakeResponse, error) {
-		return persist.JudgeNode{}, &judgev1.HandshakeResponse{Accepted: false, RejectReason: reason, ProtocolVersion: domain.ProtocolVersion}, nil
+func (m *Module) Handshake(ctx context.Context, req *judgev1.HandshakeRequest) (uuid.UUID, *judgev1.HandshakeResponse, error) {
+	rej := func(reason string) (uuid.UUID, *judgev1.HandshakeResponse, error) {
+		return uuid.Nil, &judgev1.HandshakeResponse{Accepted: false, RejectReason: reason, ProtocolVersion: domain.ProtocolVersion}, nil
 	}
 	if req.GetProtocolVersion() != domain.ProtocolVersion {
 		return rej("unsupported protocol version")
@@ -186,10 +186,9 @@ func (m *Module) Handshake(ctx context.Context, req *judgev1.HandshakeRequest) (
 		"connected": true, "last_heartbeat_at": now, "advertised_profiles": persist.JSONList(req.GetExecutionProfileIds()),
 		"max_slots": max(int(req.GetMaxSlots()), 1),
 	}).Error; err != nil {
-		return persist.JudgeNode{}, nil, err
+		return uuid.Nil, nil, err
 	}
-	node.Connected = true
-	return node, &judgev1.HandshakeResponse{
+	return node.ID, &judgev1.HandshakeResponse{
 		Accepted: true, ProtocolVersion: domain.ProtocolVersion,
 		HeartbeatIntervalMs: int32(domain.HeartbeatInterval / time.Millisecond),
 		LeaseMs:             int32(domain.NodeLostAfter / time.Millisecond),
@@ -441,27 +440,31 @@ func (m *Module) SwitchRejudge(ctx context.Context, p access.Principal, batchID 
 	})
 }
 
-func (m *Module) Object(ctx context.Context, id uuid.UUID) (persist.Object, error) {
+func (m *Module) Object(ctx context.Context, id uuid.UUID) (BlobRef, error) {
 	var obj persist.Object
 	if err := m.DB.WithContext(ctx).First(&obj, "id = ?", id).Error; err != nil {
-		return persist.Object{}, apperr.New(apperr.NotFound, "object not found")
+		return BlobRef{}, apperr.New(apperr.NotFound, "object not found")
 	}
-	return obj, nil
+	return blobRef(obj), nil
 }
 
-func (m *Module) OpenFile(ctx context.Context, rawToken string) (persist.Object, error) {
+func (m *Module) OpenFile(ctx context.Context, rawToken string) (BlobRef, error) {
 	var g persist.DownloadGrant
 	if err := m.DB.WithContext(ctx).Where("token_hash = ?", sec.HashToken(rawToken)).First(&g).Error; err != nil {
-		return persist.Object{}, apperr.New(apperr.Unauthorized, "invalid download token")
+		return BlobRef{}, apperr.New(apperr.Unauthorized, "invalid download token")
 	}
 	if m.now().After(g.ExpiresAt) {
-		return persist.Object{}, apperr.New(apperr.Unauthorized, "download token expired")
+		return BlobRef{}, apperr.New(apperr.Unauthorized, "download token expired")
 	}
 	var obj persist.Object
 	if err := m.DB.WithContext(ctx).First(&obj, "id = ?", g.ObjectID).Error; err != nil {
-		return persist.Object{}, apperr.New(apperr.NotFound, "object not found")
+		return BlobRef{}, apperr.New(apperr.NotFound, "object not found")
 	}
-	return obj, nil
+	return blobRef(obj), nil
+}
+
+func blobRef(obj persist.Object) BlobRef {
+	return BlobRef{StorageKey: obj.StorageKey, SHA256: obj.SHA256, ContentType: obj.ContentType}
 }
 
 func (m *Module) authorizePool(ctx context.Context, p access.Principal, pool persist.JudgePool) error {

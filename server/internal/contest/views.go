@@ -37,7 +37,19 @@ type BankProblem struct {
 	Title string    `json:"title"`
 }
 
-func ViewOf(c persist.Contest) View {
+type AddedProblem struct {
+	ID         uuid.UUID `json:"id"`
+	Letter     string    `json:"letter"`
+	ProblemID  uuid.UUID `json:"problem_id"`
+	RevisionID uuid.UUID `json:"revision_id"`
+}
+
+type EntrantView struct {
+	ID     uuid.UUID `json:"id"`
+	Status string    `json:"status"`
+}
+
+func viewOf(c persist.Contest) View {
 	return View{
 		ID: c.ID, OrganizationID: c.OrganizationID, Slug: c.Slug, Title: c.Title,
 		Rule: c.Rule, EntryMode: c.EntryMode, StartsAt: c.StartsAt, EndsAt: c.EndsAt,

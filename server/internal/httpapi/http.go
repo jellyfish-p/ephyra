@@ -56,13 +56,13 @@ func (a *API) session(c *gin.Context) {
 		c.Next()
 		return
 	}
-	p, sess, err := a.Identity.Resolve(c.Request.Context(), raw)
+	p, csrfSecret, err := a.Identity.Resolve(c.Request.Context(), raw)
 	if err != nil {
 		c.Next()
 		return
 	}
 	c.Set("principal", p)
-	c.Set("csrf", sess.CSRFSecret)
+	c.Set("csrf", csrfSecret)
 	c.Next()
 }
 

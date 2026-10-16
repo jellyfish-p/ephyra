@@ -48,10 +48,10 @@ func (a *API) submit(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusAccepted, gin.H{
-		"submission_id": res.Submission.ID,
-		"receive_seq":   res.Submission.ReceiveSeq,
-		"received_at":   res.Submission.ReceivedAt,
-		"task_id":       res.Task.ID,
+		"submission_id": res.SubmissionID,
+		"receive_seq":   res.ReceiveSeq,
+		"received_at":   res.ReceivedAt,
+		"task_id":       res.TaskID,
 	})
 }
 
@@ -64,12 +64,7 @@ func (a *API) getSubmission(c *gin.Context) {
 	if !ok {
 		return
 	}
-	sub, err := a.Submission.Get(c.Request.Context(), id)
-	if err != nil {
-		writeErr(c, err)
-		return
-	}
-	out, _, err := a.Scoring.ViewSubmission(c.Request.Context(), p, sub)
+	out, _, err := a.Scoring.ViewSubmission(c.Request.Context(), p, id)
 	if err != nil {
 		writeErr(c, err)
 		return
@@ -86,16 +81,11 @@ func (a *API) getSource(c *gin.Context) {
 	if !ok {
 		return
 	}
-	sub, err := a.Submission.Get(c.Request.Context(), id)
-	if err != nil {
+	if err := a.Scoring.CanReadSource(c.Request.Context(), p, id); err != nil {
 		writeErr(c, err)
 		return
 	}
-	if err := a.Scoring.CanReadSource(c.Request.Context(), p, sub); err != nil {
-		writeErr(c, err)
-		return
-	}
-	obj, err := a.Judging.Object(c.Request.Context(), sub.SourceObjectID)
+	obj, err := a.Submission.SourceBlob(c.Request.Context(), id)
 	if err != nil {
 		writeErr(c, err)
 		return

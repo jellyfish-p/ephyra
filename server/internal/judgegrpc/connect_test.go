@@ -11,17 +11,16 @@ import (
 	"github.com/jellyfish-p/ephyra/server/internal/clock"
 	"github.com/jellyfish-p/ephyra/server/internal/domain"
 	"github.com/jellyfish-p/ephyra/server/internal/judging"
-	"github.com/jellyfish-p/ephyra/server/internal/persist"
 	"google.golang.org/grpc/metadata"
 )
 
 type stubJudging struct {
-	node        persist.JudgeNode
+	nodeID      uuid.UUID
 	invalidated []string
 }
 
-func (s *stubJudging) Handshake(context.Context, *judgev1.HandshakeRequest) (persist.JudgeNode, *judgev1.HandshakeResponse, error) {
-	return s.node, &judgev1.HandshakeResponse{Accepted: true, ProtocolVersion: domain.ProtocolVersion}, nil
+func (s *stubJudging) Handshake(context.Context, *judgev1.HandshakeRequest) (uuid.UUID, *judgev1.HandshakeResponse, error) {
+	return s.nodeID, &judgev1.HandshakeResponse{Accepted: true, ProtocolVersion: domain.ProtocolVersion}, nil
 }
 
 func (s *stubJudging) Heartbeat(_ context.Context, _ uuid.UUID, active []string) ([]string, error) {
@@ -68,7 +67,7 @@ func TestConnectSlotReportSendsHeartbeatAck(t *testing.T) {
 	live := uuid.New().String()
 	now := time.UnixMilli(1_700_000_000_000)
 	srv := &Server{
-		Judging: &stubJudging{node: persist.JudgeNode{ID: nodeID}, invalidated: []string{dead}},
+		Judging: &stubJudging{nodeID: nodeID, invalidated: []string{dead}},
 		Hub:     judging.NewHub(),
 		Clock:   clock.Fixed{T: now},
 	}

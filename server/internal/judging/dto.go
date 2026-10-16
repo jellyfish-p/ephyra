@@ -2,6 +2,13 @@ package judging
 
 import "github.com/google/uuid"
 
+// BlobRef is the storage handle callers need to open a blob. It is not a GORM model.
+type BlobRef struct {
+	StorageKey  string
+	SHA256      string
+	ContentType string
+}
+
 // PoolView is the admin JSON for a created pool. It is not a GORM model.
 type PoolView struct {
 	ID   uuid.UUID `json:"id"`

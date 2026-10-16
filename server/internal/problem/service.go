@@ -25,22 +25,22 @@ type Module struct {
 	Blobs objectstore.Store
 }
 
-func (m *Module) ImportHydro(ctx context.Context, p access.Principal, orgID uuid.UUID, slug, title string, zip []byte) (persist.Problem, persist.JudgeDataRevision, error) {
+func (m *Module) ImportHydro(ctx context.Context, p access.Principal, orgID uuid.UUID, slug, title string, zip []byte) (ImportResult, error) {
 	if err := m.requireManage(ctx, p, orgID); err != nil {
-		return persist.Problem{}, persist.JudgeDataRevision{}, err
+		return ImportResult{}, err
 	}
 	pkg, err := ImportHydroZip(zip)
 	if err != nil {
-		return persist.Problem{}, persist.JudgeDataRevision{}, err
+		return ImportResult{}, err
 	}
 	slug = strings.ToLower(strings.TrimSpace(slug))
 	title = strings.TrimSpace(title)
 	if slug == "" || title == "" {
-		return persist.Problem{}, persist.JudgeDataRevision{}, apperr.New(apperr.Invalid, "slug and title are required")
+		return ImportResult{}, apperr.New(apperr.Invalid, "slug and title are required")
 	}
 	cfgJSON, err := json.Marshal(pkg.Config)
 	if err != nil {
-		return persist.Problem{}, persist.JudgeDataRevision{}, err
+		return ImportResult{}, err
 	}
 	now := m.Clock.Now().UTC()
 	prob := persist.Problem{ID: uuid.New(), OrganizationID: orgID, Slug: slug, Title: title, CreatedAt: now}
@@ -55,19 +55,22 @@ func (m *Module) ImportHydro(ctx context.Context, p access.Principal, orgID uuid
 		if err := tx.Create(&rev).Error; err != nil {
 			return err
 		}
-		return m.writeFiles(ctx, tx, rev.ID, pkg)
+		return m.writeFiles(ctx, tx, rev.ID, pkg.Config, pkg.Files)
 	})
-	return prob, rev, err
+	if err != nil {
+		return ImportResult{}, err
+	}
+	return ImportResult{ProblemID: prob.ID, RevisionID: rev.ID, RevisionN: rev.RevisionN}, nil
 }
 
-func (m *Module) AddRevision(ctx context.Context, p access.Principal, problemID uuid.UUID, zip []byte) (persist.JudgeDataRevision, error) {
+func (m *Module) AddRevision(ctx context.Context, p access.Principal, problemID uuid.UUID, zip []byte) (RevisionRef, error) {
 	pkg, err := ImportHydroZip(zip)
 	if err != nil {
-		return persist.JudgeDataRevision{}, err
+		return RevisionRef{}, err
 	}
 	cfgJSON, err := json.Marshal(pkg.Config)
 	if err != nil {
-		return persist.JudgeDataRevision{}, err
+		return RevisionRef{}, err
 	}
 	var rev persist.JudgeDataRevision
 	err = m.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -91,23 +94,26 @@ func (m *Module) AddRevision(ctx context.Context, p access.Principal, problemID 
 		if err := tx.Create(&rev).Error; err != nil {
 			return err
 		}
-		return m.writeFiles(ctx, tx, rev.ID, pkg)
+		return m.writeFiles(ctx, tx, rev.ID, pkg.Config, pkg.Files)
 	})
-	return rev, err
+	if err != nil {
+		return RevisionRef{}, err
+	}
+	return RevisionRef{ID: rev.ID, RevisionN: rev.RevisionN}, nil
 }
 
-func (m *Module) writeFiles(ctx context.Context, tx *gorm.DB, revisionID uuid.UUID, pkg HydroPackage) error {
-	for _, f := range pkg.Files {
+func (m *Module) writeFiles(ctx context.Context, tx *gorm.DB, revisionID uuid.UUID, cfg NormalizedConfig, files []File) error {
+	for _, f := range files {
 		obj, err := m.putBlob(ctx, tx, f.Data, contentType(f.Name))
 		if err != nil {
 			return err
 		}
 		role := "data"
 		base := path.Base(f.Name)
-		if pkg.Config.Checker.SourceName != "" && base == pkg.Config.Checker.SourceName {
+		if cfg.Checker.SourceName != "" && base == cfg.Checker.SourceName {
 			role = "checker"
 		}
-		if pkg.Config.Interactor != nil && base == pkg.Config.Interactor.SourceName {
+		if cfg.Interactor != nil && base == cfg.Interactor.SourceName {
 			role = "interactor"
 		}
 		rf := persist.RevisionFile{

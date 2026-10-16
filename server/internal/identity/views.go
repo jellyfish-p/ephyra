@@ -6,6 +6,14 @@ import (
 	"github.com/google/uuid"
 )
 
+type AccountView struct {
+	ID            uuid.UUID `json:"id"`
+	Email         string    `json:"email"`
+	DisplayName   string    `json:"display_name"`
+	EmailVerified bool      `json:"email_verified"`
+	SiteAdmin     bool      `json:"site_admin"`
+}
+
 type OrganizationView struct {
 	ID   uuid.UUID `json:"id"`
 	Slug string    `json:"slug"`

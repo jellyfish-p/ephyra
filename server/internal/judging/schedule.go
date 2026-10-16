@@ -292,15 +292,12 @@ func (m *Module) buildDispatch(ctx context.Context, tx *gorm.DB, task persist.Ju
 	}}}, nil
 }
 
-func (m *Module) EnsureSystemPool(ctx context.Context) (persist.JudgePool, error) {
+func (m *Module) EnsureSystemPool(ctx context.Context) error {
 	var pool persist.JudgePool
 	err := m.DB.WithContext(ctx).Where("kind = ?", domain.PoolSystem).First(&pool).Error
 	if err == nil {
-		return pool, nil
+		return nil
 	}
 	pool = persist.JudgePool{ID: uuid.New(), Kind: string(domain.PoolSystem), Name: "system", Enabled: true, CreatedAt: m.now()}
-	if err := m.DB.WithContext(ctx).Create(&pool).Error; err != nil {
-		return persist.JudgePool{}, err
-	}
-	return pool, nil
+	return m.DB.WithContext(ctx).Create(&pool).Error
 }
