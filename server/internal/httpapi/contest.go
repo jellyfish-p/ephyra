@@ -14,7 +14,11 @@ import (
 
 func (a *API) contestRoutes(r *gin.Engine) {
 	r.POST("/api/organizations/:id/contests", a.createContest)
+	r.GET("/api/organizations/:id/contests", a.listOrgContests)
+	r.GET("/api/organizations/:id/problems", a.listOrgProblems)
 	r.GET("/api/contests/:id", a.getContest)
+	r.PATCH("/api/contests/:id/source-public", a.setSourcePublic)
+	r.GET("/api/contests/:id/problems", a.listContestProblems)
 	r.POST("/api/contests/:id/problems", a.addContestProblem)
 	r.POST("/api/contests/:id/register", a.registerIndividual)
 	r.POST("/api/contests/:id/teams", a.createTeam)
@@ -76,25 +80,133 @@ func (a *API) createContest(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"id": ct.ID, "slug": ct.Slug, "title": ct.Title, "rule": ct.Rule, "entry_mode": ct.EntryMode})
+	c.JSON(http.StatusCreated, contestDTO(contest.ViewOf(ct)))
 }
 
-func (a *API) getContest(c *gin.Context) {
-	id, ok := parseUUID(c, "id")
+func (a *API) listOrgContests(c *gin.Context) {
+	p, ok := requireUser(c)
 	if !ok {
 		return
 	}
-	ct, err := a.Contest.Get(c.Request.Context(), id)
+	orgID, ok := parseUUID(c, "id")
+	if !ok {
+		return
+	}
+	list, err := a.Contest.ListByOrganization(c.Request.Context(), p, orgID)
 	if err != nil {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
+	out := make([]gin.H, 0, len(list))
+	for _, ct := range list {
+		out = append(out, contestDTO(ct))
+	}
+	c.JSON(http.StatusOK, gin.H{"contests": out})
+}
+
+func (a *API) listOrgProblems(c *gin.Context) {
+	p, ok := requireUser(c)
+	if !ok {
+		return
+	}
+	orgID, ok := parseUUID(c, "id")
+	if !ok {
+		return
+	}
+	list, err := a.Contest.ListOrgProblems(c.Request.Context(), p, orgID)
+	if err != nil {
+		writeErr(c, err)
+		return
+	}
+	out := make([]gin.H, 0, len(list))
+	for _, pbm := range list {
+		out = append(out, gin.H{"id": pbm.ID, "slug": pbm.Slug, "title": pbm.Title})
+	}
+	c.JSON(http.StatusOK, gin.H{"problems": out})
+}
+
+func (a *API) getContest(c *gin.Context) {
+	p, ok := requireUser(c)
+	if !ok {
+		return
+	}
+	id, ok := parseUUID(c, "id")
+	if !ok {
+		return
+	}
+	ct, err := a.Contest.Get(c.Request.Context(), p, id)
+	if err != nil {
+		writeErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, contestDTO(ct))
+}
+
+func (a *API) setSourcePublic(c *gin.Context) {
+	p, ok := requireUser(c)
+	if !ok {
+		return
+	}
+	id, ok := parseUUID(c, "id")
+	if !ok {
+		return
+	}
+	var in struct {
+		SourcePublicAfter bool `json:"source_public_after"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		writeErr(c, err)
+		return
+	}
+	if err := a.Contest.SetSourcePublicAfter(c.Request.Context(), p, id, in.SourcePublicAfter); err != nil {
+		writeErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+func (a *API) listContestProblems(c *gin.Context) {
+	p, ok := requireUser(c)
+	if !ok {
+		return
+	}
+	id, ok := parseUUID(c, "id")
+	if !ok {
+		return
+	}
+	list, err := a.Contest.ListProblems(c.Request.Context(), p, id)
+	if err != nil {
+		writeErr(c, err)
+		return
+	}
+	out := make([]gin.H, 0, len(list))
+	for _, cp := range list {
+		item := gin.H{"letter": cp.Letter}
+		if cp.Title != "" {
+			item["title"] = cp.Title
+		}
+		if cp.ProblemID != nil {
+			item["problem_id"] = *cp.ProblemID
+		}
+		if cp.ScoringRevisionID != nil {
+			item["scoring_revision_id"] = *cp.ScoringRevisionID
+		}
+		if cp.TargetRevisionID != nil {
+			item["target_revision_id"] = *cp.TargetRevisionID
+		}
+		out = append(out, item)
+	}
+	c.JSON(http.StatusOK, gin.H{"problems": out})
+}
+
+func contestDTO(ct contest.View) gin.H {
+	return gin.H{
 		"id": ct.ID, "organization_id": ct.OrganizationID, "slug": ct.Slug, "title": ct.Title,
 		"rule": ct.Rule, "entry_mode": ct.EntryMode, "starts_at": ct.StartsAt, "ends_at": ct.EndsAt,
-		"allow_external": ct.AllowExternal, "source_public_after": ct.SourcePublicAfter,
+		"register_starts_at": ct.RegisterStartsAt, "allow_external": ct.AllowExternal,
+		"source_public_after": ct.SourcePublicAfter, "source_visibility_locked": ct.SourceVisibilityLocked,
 		"published_at": ct.PublishedAt,
-	})
+	}
 }
 
 func (a *API) addContestProblem(c *gin.Context) {
