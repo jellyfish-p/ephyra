@@ -10,12 +10,52 @@ import (
 	"github.com/jellyfish-p/ephyra/server/internal/clock"
 	"github.com/jellyfish-p/ephyra/server/internal/domain"
 	"github.com/jellyfish-p/ephyra/server/internal/judging"
+	"github.com/jellyfish-p/ephyra/server/internal/persist"
 )
+
+// judgingAPI is the judging surface Connect uses. *judging.Module implements it;
+// tests may substitute a stub so Connect can be covered without GORM.
+type judgingAPI interface {
+	Handshake(ctx context.Context, req *judgev1.HandshakeRequest) (persist.JudgeNode, *judgev1.HandshakeResponse, error)
+	Heartbeat(ctx context.Context, nodeID uuid.UUID, active []string) ([]string, error)
+	Disconnect(ctx context.Context, nodeID uuid.UUID)
+	AcceptResult(ctx context.Context, report judging.Report) error
+}
+
+var _ judgingAPI = (*judging.Module)(nil)
 
 type Server struct {
 	judgev1.UnimplementedJudgeControlServer
-	Judging *judging.Module
+	Judging judgingAPI
+	Hub     *judging.Hub
 	Clock   clock.Clock
+}
+
+func ackInvalidations(inv []string) *judgev1.HeartbeatAck {
+	return &judgev1.HeartbeatAck{InvalidateAttemptIds: inv}
+}
+
+func (s *Server) nodeHub() *judging.Hub {
+	if s.Hub != nil {
+		return s.Hub
+	}
+	if m, ok := s.Judging.(*judging.Module); ok && m != nil && m.Hub != nil {
+		s.Hub = m.Hub
+		return s.Hub
+	}
+	s.Hub = judging.NewHub()
+	return s.Hub
+}
+
+func (s *Server) ackActive(stream judgev1.JudgeControl_ConnectServer, nodeID uuid.UUID, active []string) {
+	inv, err := s.Judging.Heartbeat(stream.Context(), nodeID, active)
+	if err != nil {
+		log.Printf("heartbeat: %v", err)
+		return
+	}
+	ack := ackInvalidations(inv)
+	ack.UnixMs = s.Clock.Now().UnixMilli()
+	_ = stream.Send(&judgev1.ServerMessage{Body: &judgev1.ServerMessage_HeartbeatAck{HeartbeatAck: ack}})
 }
 
 func (s *Server) Connect(stream judgev1.JudgeControl_ConnectServer) error {
@@ -41,9 +81,9 @@ func (s *Server) Connect(stream judgev1.JudgeControl_ConnectServer) error {
 		NodeID: node.ID, Send: make(chan *judgev1.ServerMessage, 8),
 		Profiles: hs.GetExecutionProfileIds(), MaxSlots: hs.GetMaxSlots(),
 	}
-	s.Judging.Hub.Register(conn)
+	s.nodeHub().Register(conn)
 	defer func() {
-		s.Judging.Hub.Unregister(node.ID, conn)
+		s.nodeHub().Unregister(node.ID, conn)
 		s.Judging.Disconnect(context.Background(), node.ID)
 	}()
 
@@ -69,14 +109,7 @@ func (s *Server) Connect(stream judgev1.JudgeControl_ConnectServer) error {
 		}
 		switch b := msg.Body.(type) {
 		case *judgev1.NodeMessage_Heartbeat:
-			inv, err := s.Judging.Heartbeat(stream.Context(), node.ID, b.Heartbeat.GetActiveAttemptIds())
-			if err != nil {
-				log.Printf("heartbeat: %v", err)
-				continue
-			}
-			_ = stream.Send(&judgev1.ServerMessage{Body: &judgev1.ServerMessage_HeartbeatAck{
-				HeartbeatAck: &judgev1.HeartbeatAck{UnixMs: s.Clock.Now().UnixMilli(), InvalidateAttemptIds: inv},
-			}})
+			s.ackActive(stream, node.ID, b.Heartbeat.GetActiveAttemptIds())
 		case *judgev1.NodeMessage_Result:
 			rep, err := judging.ReportFromProto(b.Result)
 			if err != nil {
@@ -87,7 +120,10 @@ func (s *Server) Connect(stream judgev1.JudgeControl_ConnectServer) error {
 				log.Printf("result: %v", err)
 			}
 		case *judgev1.NodeMessage_Slots:
-			_, _ = s.Judging.Heartbeat(stream.Context(), node.ID, b.Slots.GetActiveAttemptIds())
+			// SlotReport is the same "here is what I am running" signal as
+			// Heartbeat. The node must stop invalidated attempts before it
+			// advertises free slots, so we reuse HeartbeatAck.
+			s.ackActive(stream, node.ID, b.Slots.GetActiveAttemptIds())
 		case *judgev1.NodeMessage_Progress:
 			_ = b
 		default:
