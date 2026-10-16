@@ -61,9 +61,9 @@ func TestImportRejectsPathEscape(t *testing.T) {
 
 func TestImportInteractive(t *testing.T) {
 	z := zipBytes(t, map[string]string{
-		"config.yaml": "type: interactive\ntime: 1000ms\nmemory: 128m\nchecker_type: testlib\nchecker: chk.cpp\ninteractor: interactor.cpp\ncases:\n  - input: 1.in\n",
-		"1.in":        "1\n",
-		"chk.cpp":     "// checker\n",
+		"config.yaml":    "type: interactive\ntime: 1000ms\nmemory: 128m\nchecker_type: testlib\nchecker: chk.cpp\ninteractor: interactor.cpp\ncases:\n  - input: 1.in\n",
+		"1.in":           "1\n",
+		"chk.cpp":        "// checker\n",
 		"interactor.cpp": "// interactor\n",
 	})
 	pkg, err := ImportHydroZip(z)

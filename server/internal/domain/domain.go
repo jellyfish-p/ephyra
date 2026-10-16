@@ -123,10 +123,10 @@ const (
 type ContestPhase string
 
 const (
-	PhaseBefore            ContestPhase = "before"
-	PhaseRunning           ContestPhase = "running"
-	PhaseEndedUnpublished  ContestPhase = "ended_unpublished"
-	PhasePublished         ContestPhase = "published"
+	PhaseBefore           ContestPhase = "before"
+	PhaseRunning          ContestPhase = "running"
+	PhaseEndedUnpublished ContestPhase = "ended_unpublished"
+	PhasePublished        ContestPhase = "published"
 )
 
 func Phase(now, start, end time.Time, published bool) ContestPhase {

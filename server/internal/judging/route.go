@@ -9,13 +9,13 @@ import (
 )
 
 type PoolSnapshot struct {
-	ID             uuid.UUID
-	Priority       int
-	Enabled        bool
-	Offline        bool
-	HasProfile     bool
-	HealthyNodes   int
-	FreeSlots      int
+	ID           uuid.UUID
+	Priority     int
+	Enabled      bool
+	Offline      bool
+	HasProfile   bool
+	HealthyNodes int
+	FreeSlots    int
 }
 
 type RouteDecision struct {

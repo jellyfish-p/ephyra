@@ -154,8 +154,8 @@ func TestReceiveOrderNotCompletionOrder(t *testing.T) {
 	second := ac(e, p, rev, 2, start.Add(2*time.Minute))
 	in := ContestInput{
 		Rule: domain.RuleACM, PenaltyMinutes: 20, Start: start,
-		Problems: []Problem{{ID: p, RevisionID: rev}},
-		Entrants: []Entrant{{ID: e}},
+		Problems:    []Problem{{ID: p, RevisionID: rev}},
+		Entrants:    []Entrant{{ID: e}},
 		Submissions: []Submission{second, first},
 	}
 	got := ScoreContest(in)

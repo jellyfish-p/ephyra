@@ -12,17 +12,17 @@ import (
 )
 
 type Attempt struct {
-	ID             uuid.UUID
-	TaskID         uuid.UUID
-	Generation     int32
-	NodeID         uuid.UUID
-	RevisionID     uuid.UUID
-	ProfileID      string
-	State          domain.AttemptState
-	StoredVerdict  domain.Verdict
-	StoredScore    exact.Score
-	StoredFault    bool
-	HasStored      bool
+	ID            uuid.UUID
+	TaskID        uuid.UUID
+	Generation    int32
+	NodeID        uuid.UUID
+	RevisionID    uuid.UUID
+	ProfileID     string
+	State         domain.AttemptState
+	StoredVerdict domain.Verdict
+	StoredScore   exact.Score
+	StoredFault   bool
+	HasStored     bool
 }
 
 type Report struct {
@@ -50,9 +50,9 @@ const (
 )
 
 type AcceptResult struct {
-	Action  AcceptAction
+	Action   AcceptAction
 	Computed scoring.ComputedScore
-	Err     error
+	Err      error
 }
 
 func AcceptReport(att Attempt, cfg problem.NormalizedConfig, report Report) AcceptResult {

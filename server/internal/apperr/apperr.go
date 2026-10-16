@@ -5,17 +5,17 @@ import "fmt"
 type Code string
 
 const (
-	Unauthorized   Code = "unauthorized"
-	Forbidden      Code = "forbidden"
-	NotFound       Code = "not_found"
-	Conflict       Code = "conflict"
-	Invalid        Code = "invalid"
-	Unverified     Code = "unverified"
-	Gone           Code = "gone"
-	TooMany        Code = "too_many"
-	Unavailable    Code = "unavailable"
-	Internal       Code = "internal"
-	NotAcceptable  Code = "not_acceptable"
+	Unauthorized  Code = "unauthorized"
+	Forbidden     Code = "forbidden"
+	NotFound      Code = "not_found"
+	Conflict      Code = "conflict"
+	Invalid       Code = "invalid"
+	Unverified    Code = "unverified"
+	Gone          Code = "gone"
+	TooMany       Code = "too_many"
+	Unavailable   Code = "unavailable"
+	Internal      Code = "internal"
+	NotAcceptable Code = "not_acceptable"
 )
 
 type Error struct {

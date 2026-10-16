@@ -10,14 +10,14 @@ import (
 const ConfigVersion = 1
 
 type NormalizedConfig struct {
-	Version          int                  `json:"version"`
-	Kind             domain.ProblemKind   `json:"kind"`
-	Checker          CheckerSpec          `json:"checker"`
-	Interactor       *InteractorSpec      `json:"interactor,omitempty"`
-	TimeLimitMS      int64                `json:"time_limit_ms"`
-	MemoryLimitBytes int64                `json:"memory_limit_bytes"`
-	Subtasks         []NormalizedSubtask  `json:"subtasks"`
-	Cases            []NormalizedCase     `json:"cases"`
+	Version          int                 `json:"version"`
+	Kind             domain.ProblemKind  `json:"kind"`
+	Checker          CheckerSpec         `json:"checker"`
+	Interactor       *InteractorSpec     `json:"interactor,omitempty"`
+	TimeLimitMS      int64               `json:"time_limit_ms"`
+	MemoryLimitBytes int64               `json:"memory_limit_bytes"`
+	Subtasks         []NormalizedSubtask `json:"subtasks"`
+	Cases            []NormalizedCase    `json:"cases"`
 }
 
 type CheckerSpec struct {

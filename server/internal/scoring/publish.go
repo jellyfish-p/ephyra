@@ -3,11 +3,11 @@ package scoring
 import "github.com/google/uuid"
 
 type WorkItem struct {
-	SubmissionID                   uuid.UUID
-	HasNormalResultForScoringRev   bool
-	AwaitingAdmin                  bool
-	SystemFault                    bool
-	OpenRejudgeBatch               bool
+	SubmissionID                 uuid.UUID
+	HasNormalResultForScoringRev bool
+	AwaitingAdmin                bool
+	SystemFault                  bool
+	OpenRejudgeBatch             bool
 }
 
 type Barrier struct {

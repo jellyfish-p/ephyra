@@ -8,17 +8,17 @@ import (
 )
 
 type VisibilityInput struct {
-	Rule          domain.Rule
-	Phase         domain.ContestPhase
-	Now           time.Time
-	EndsAt        time.Time
-	FreezeFor     time.Duration // ACM freeze window before end; 0 disables
-	Granularity   domain.FeedbackGranularity
+	Rule           domain.Rule
+	Phase          domain.ContestPhase
+	Now            time.Time
+	EndsAt         time.Time
+	FreezeFor      time.Duration // ACM freeze window before end; 0 disables
+	Granularity    domain.FeedbackGranularity
 	IOIPublicBoard bool
-	SourcePublic  bool
-	Published     bool
-	Audience      access.Audience
-	OwnSubmission bool
+	SourcePublic   bool
+	Published      bool
+	Audience       access.Audience
+	OwnSubmission  bool
 }
 
 type FeedbackLevel int

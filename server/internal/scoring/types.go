@@ -39,11 +39,11 @@ type Submission struct {
 }
 
 type Result struct {
-	Verdict        domain.Verdict
-	Score          exact.Score
-	SubtaskScores  []exact.Score
-	SystemFault    bool
-	CompileFailed  bool
+	Verdict       domain.Verdict
+	Score         exact.Score
+	SubtaskScores []exact.Score
+	SystemFault   bool
+	CompileFailed bool
 }
 
 func (s Submission) NormalOn(revision uuid.UUID) bool {

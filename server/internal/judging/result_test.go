@@ -13,7 +13,7 @@ import (
 func sampleCfg() problem.NormalizedConfig {
 	return problem.NormalizedConfig{
 		Version: 1, Kind: domain.KindBatch,
-		Checker: problem.CheckerSpec{Kind: domain.CheckerToken},
+		Checker:     problem.CheckerSpec{Kind: domain.CheckerToken},
 		TimeLimitMS: 1000, MemoryLimitBytes: 64 << 20,
 		Cases:    []problem.NormalizedCase{{ID: "1", InputName: "1.in", OutputName: "1.out"}},
 		Subtasks: []problem.NormalizedSubtask{{ID: "s1", Score: exact.FromInt(100), CaseIDs: []string{"1"}}},
@@ -43,7 +43,7 @@ func TestIdempotentAndConflict(t *testing.T) {
 	rep := Report{
 		AttemptID: id, TaskID: att.TaskID, Generation: 1, NodeID: att.NodeID, RevisionID: att.RevisionID, ProfileID: "p",
 		Verdict: domain.VerdictAccepted, Score: exact.FromInt(100),
-		Cases: []scoring.CaseOutcome{{CaseID: "1", Verdict: domain.VerdictAccepted}},
+		Cases:    []scoring.CaseOutcome{{CaseID: "1", Verdict: domain.VerdictAccepted}},
 		Subtasks: []scoring.SubtaskOutcome{{ID: "s1", Score: exact.FromInt(100)}},
 	}
 	if AcceptReport(att, sampleCfg(), rep).Action != AcceptIdempotent {
@@ -62,7 +62,7 @@ func TestRejectsScoreMismatch(t *testing.T) {
 	rep := Report{
 		AttemptID: id, TaskID: att.TaskID, Generation: 1, NodeID: att.NodeID, RevisionID: att.RevisionID, ProfileID: "p",
 		Verdict: domain.VerdictAccepted, Score: exact.FromInt(100),
-		Cases: []scoring.CaseOutcome{{CaseID: "1", Verdict: domain.VerdictWrongAnswer}},
+		Cases:    []scoring.CaseOutcome{{CaseID: "1", Verdict: domain.VerdictWrongAnswer}},
 		Subtasks: []scoring.SubtaskOutcome{{ID: "s1", Score: exact.FromInt(100)}},
 	}
 	if AcceptReport(att, sampleCfg(), rep).Action != AcceptReject {
