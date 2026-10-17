@@ -2,14 +2,23 @@ name: test
 
 on:
   push:
+    branches: [main]
   pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   server:
     runs-on: ubuntu-latest
+    timeout-minutes: 8
     services:
       postgres:
-        image: postgres:16
+        image: postgres:16-alpine
         env:
           POSTGRES_USER: ephyra
           POSTGRES_PASSWORD: ephyra
@@ -17,19 +26,19 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
+          --health-cmd "pg_isready -U ephyra -d ephyra_test"
+          --health-interval 2s
           --health-timeout 5s
-          --health-retries 5
+          --health-retries 10
       redis:
-        image: redis:7
+        image: redis:7-alpine
         ports:
           - 6379:6379
         options: >-
           --health-cmd "redis-cli ping"
-          --health-interval 10s
+          --health-interval 2s
           --health-timeout 5s
-          --health-retries 5
+          --health-retries 10
     env:
       EPHYRA_TEST_DATABASE_URL: postgres://ephyra:ephyra@localhost:5432/ephyra_test?sslmode=disable
       EPHYRA_TEST_REDIS_URL: redis://localhost:6379
@@ -38,9 +47,10 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: server/go.mod
+          cache-dependency-path: |
+            go.work.sum
+            server/go.sum
+            protocol/go.sum
       - name: test
         working-directory: server
-        run: go test ./...
-      - name: race
-        working-directory: server
-        run: go test -race ./internal/judging ./internal/judgegrpc ./internal/app ./internal/httpapi ./internal/outbox ./internal/stream
+        run: go test -race -count=1 -timeout 5m ./...
