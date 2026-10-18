@@ -1,0 +1,28 @@
+@import 'tailwindcss';
+@import '@nuxt/ui';
+
+@theme static {
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
+/* Problem statements and source listings should never widen the page. */
+.statement {
+  overflow-wrap: anywhere;
+}
+
+.statement pre {
+  overflow-x: auto;
+}
+
+.statement table {
+  display: block;
+  overflow-x: auto;
+}
+
+.source-view {
+  tab-size: 4;
+}
