@@ -43,7 +43,7 @@ func (a *API) Router() *gin.Engine {
 	r.Use(requestID)
 	r.Use(a.session)
 	r.Use(a.csrf)
-	r.GET("/api/health", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true}) })
+	r.GET("/api/health", func(c *gin.Context) { c.JSON(http.StatusOK, okResponse{OK: true}) })
 	r.GET("/api/ready", a.ready)
 	a.authRoutes(r)
 	a.orgRoutes(r)
@@ -141,15 +141,15 @@ func requestID(c *gin.Context) {
 
 func (a *API) ready(c *gin.Context) {
 	if a.Ready == nil {
-		c.JSON(http.StatusOK, gin.H{"ok": true})
+		c.JSON(http.StatusOK, okResponse{OK: true})
 		return
 	}
 	if err := a.Ready(c.Request.Context()); err != nil {
 		slog.ErrorContext(c.Request.Context(), "ready check failed", "err", err, "request_id", c.GetString("request_id"))
-		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false})
+		c.JSON(http.StatusServiceUnavailable, okResponse{OK: false})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	c.JSON(http.StatusOK, okResponse{OK: true})
 }
 
 func writeErr(c *gin.Context, err error) {

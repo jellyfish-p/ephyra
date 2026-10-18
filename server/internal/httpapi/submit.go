@@ -52,11 +52,11 @@ func (a *API) submit(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusAccepted, gin.H{
-		"submission_id": res.SubmissionID,
-		"receive_seq":   res.ReceiveSeq,
-		"received_at":   res.ReceivedAt,
-		"task_id":       res.TaskID,
+	c.JSON(http.StatusAccepted, submitAcceptedResponse{
+		SubmissionID: res.SubmissionID,
+		ReceiveSeq:   res.ReceiveSeq,
+		ReceivedAt:   res.ReceivedAt,
+		TaskID:       res.TaskID,
 	})
 }
 
@@ -87,9 +87,7 @@ func (a *API) listSubmissions(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, struct {
-		Submissions []scoring.SubmissionPublic `json:"submissions"`
-	}{Submissions: out})
+	c.JSON(http.StatusOK, submissionListResponse{Submissions: out})
 }
 
 func submissionFilter(c *gin.Context) (scoring.SubmissionFilter, error) {

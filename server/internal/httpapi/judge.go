@@ -43,16 +43,18 @@ func (a *API) judgeFile(c *gin.Context) {
 	c.DataFromReader(http.StatusOK, n, ctype, rc, nil)
 }
 
+type createPoolRequest struct {
+	Kind           string     `json:"kind"`
+	OrganizationID *uuid.UUID `json:"organization_id"`
+	Name           string     `json:"name"`
+}
+
 func (a *API) createPool(c *gin.Context) {
 	p, ok := requireUser(c)
 	if !ok {
 		return
 	}
-	var in struct {
-		Kind           string     `json:"kind"`
-		OrganizationID *uuid.UUID `json:"organization_id"`
-		Name           string     `json:"name"`
-	}
+	var in createPoolRequest
 	if err := c.ShouldBindJSON(&in); err != nil {
 		writeErr(c, err)
 		return
@@ -99,6 +101,10 @@ func (a *API) listNodes(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"nodes": nodes})
 }
 
+type registerNodeRequest struct {
+	Name string `json:"name"`
+}
+
 func (a *API) registerNode(c *gin.Context) {
 	p, ok := requireUser(c)
 	if !ok {
@@ -108,9 +114,7 @@ func (a *API) registerNode(c *gin.Context) {
 	if !ok {
 		return
 	}
-	var in struct {
-		Name string `json:"name"`
-	}
+	var in registerNodeRequest
 	if err := c.ShouldBindJSON(&in); err != nil {
 		writeErr(c, err)
 		return
@@ -156,6 +160,10 @@ func (a *API) revokeNode(c *gin.Context) {
 	c.JSON(http.StatusOK, judging.Ok())
 }
 
+type setRoutingRequest struct {
+	Entries []judging.RoutingEntry `json:"entries"`
+}
+
 func (a *API) setRouting(c *gin.Context) {
 	p, ok := requireUser(c)
 	if !ok {
@@ -165,9 +173,7 @@ func (a *API) setRouting(c *gin.Context) {
 	if !ok {
 		return
 	}
-	var in struct {
-		Entries []judging.RoutingEntry `json:"entries"`
-	}
+	var in setRoutingRequest
 	if err := c.ShouldBindJSON(&in); err != nil {
 		writeErr(c, err)
 		return
@@ -238,6 +244,10 @@ func (a *API) redispatch(c *gin.Context) {
 	c.JSON(http.StatusOK, judging.Ok())
 }
 
+type rejudgeRequest struct {
+	RevisionID uuid.UUID `json:"revision_id"`
+}
+
 func (a *API) rejudge(c *gin.Context) {
 	p, ok := requireUser(c)
 	if !ok {
@@ -247,9 +257,7 @@ func (a *API) rejudge(c *gin.Context) {
 	if !ok {
 		return
 	}
-	var in struct {
-		RevisionID uuid.UUID `json:"revision_id"`
-	}
+	var in rejudgeRequest
 	if err := c.ShouldBindJSON(&in); err != nil {
 		writeErr(c, err)
 		return

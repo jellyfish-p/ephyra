@@ -19,15 +19,17 @@ func (a *API) orgRoutes(r *gin.Engine) {
 	r.POST("/api/organizations/:id/join-requests/:requestId/decision", a.decideJoin)
 }
 
+type createOrgRequest struct {
+	Slug string `json:"slug"`
+	Name string `json:"name"`
+}
+
 func (a *API) createOrg(c *gin.Context) {
 	p, ok := requireUser(c)
 	if !ok {
 		return
 	}
-	var in struct {
-		Slug string `json:"slug"`
-		Name string `json:"name"`
-	}
+	var in createOrgRequest
 	if err := c.ShouldBindJSON(&in); err != nil {
 		writeErr(c, err)
 		return
@@ -38,7 +40,7 @@ func (a *API) createOrg(c *gin.Context) {
 		return
 	}
 	_ = a.Judging.EnsureDefaultRouting(c.Request.Context(), org.ID)
-	c.JSON(http.StatusCreated, gin.H{"id": org.ID, "slug": org.Slug, "name": org.Name})
+	c.JSON(http.StatusCreated, orgSummaryResponse{ID: org.ID, Slug: org.Slug, Name: org.Name})
 }
 
 func (a *API) listOrganizations(c *gin.Context) {
@@ -77,7 +79,7 @@ func (a *API) getOrg(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"id": org.ID, "slug": org.Slug, "name": org.Name})
+	c.JSON(http.StatusOK, orgSummaryResponse{ID: org.ID, Slug: org.Slug, Name: org.Name})
 }
 
 func (a *API) joinOrg(c *gin.Context) {
@@ -93,7 +95,7 @@ func (a *API) joinOrg(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusAccepted, gin.H{"ok": true})
+	c.JSON(http.StatusAccepted, okResponse{OK: true})
 }
 
 func (a *API) listMembers(c *gin.Context) {
@@ -127,8 +129,8 @@ func (a *API) myMembership(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
-		"organization_id": mem.OrganizationID, "member": mem.Member, "role": mem.Role,
+	c.JSON(http.StatusOK, membershipResponse{
+		OrganizationID: mem.OrganizationID, Member: mem.Member, Role: mem.Role,
 	})
 }
 
@@ -149,6 +151,10 @@ func (a *API) listJoinRequests(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"join_requests": reqs})
 }
 
+type decideJoinRequest struct {
+	Approve bool `json:"approve"`
+}
+
 func (a *API) decideJoin(c *gin.Context) {
 	p, ok := requireUser(c)
 	if !ok {
@@ -159,9 +165,7 @@ func (a *API) decideJoin(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	var in struct {
-		Approve bool `json:"approve"`
-	}
+	var in decideJoinRequest
 	if err := c.ShouldBindJSON(&in); err != nil {
 		writeErr(c, err)
 		return
@@ -170,5 +174,5 @@ func (a *API) decideJoin(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	c.JSON(http.StatusOK, okResponse{OK: true})
 }

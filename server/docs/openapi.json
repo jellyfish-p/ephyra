@@ -1,0 +1,4938 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Ephyra Judge API",
+    "version": "1.0.0",
+    "description": "Online judge API. Authentication is a session cookie plus a CSRF header, both same-origin: fetch /api/auth/csrf, send the readable ephyra_csrf cookie back as X-CSRF-Token on every unsafe method. Fields are omitted rather than nulled when the caller is not allowed to see them, so a client must branch on presence."
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "Same origin. The frontend proxies /api to the backend, so no CORS is involved."
+    }
+  ],
+  "tags": [
+    {
+      "name": "auth",
+      "description": "Accounts, sessions and the CSRF handshake."
+    },
+    {
+      "name": "organizations",
+      "description": "Organizations, their members, pools and problem bank."
+    },
+    {
+      "name": "contests",
+      "description": "Contests, their problems, entrants and standings."
+    },
+    {
+      "name": "submissions",
+      "description": "Submitting source and reading results."
+    },
+    {
+      "name": "judging",
+      "description": "Judge pools, nodes, routing and rejudging."
+    },
+    {
+      "name": "events",
+      "description": "Live contest updates."
+    },
+    {
+      "name": "system",
+      "description": "Liveness and readiness probes."
+    }
+  ],
+  "paths": {
+    "/api/auth/csrf": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Ensure the readable CSRF cookie exists",
+        "operationId": "csrfToken",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/okResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/forgot-password": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Request a password reset token",
+        "operationId": "forgot",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/forgotPasswordRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/okResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Start a session",
+        "operationId": "login",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/loginRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/accountResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "End the session, if there is one",
+        "operationId": "logout",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/okResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/register": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Create an account",
+        "operationId": "register",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/registerRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/accountResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/reset-password": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Set a new password with a reset token",
+        "operationId": "reset",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/resetPasswordRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/okResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/verify-email": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Confirm an email address with a token",
+        "operationId": "verifyEmail",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/verifyEmailRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/okResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/contest-problems/:id/rejudge": {
+      "post": {
+        "tags": [
+          "judging"
+        ],
+        "summary": "Start a rejudge against a newer revision",
+        "operationId": "rejudge",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/rejudgeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RejudgeBatchView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/contests/:id": {
+      "get": {
+        "tags": [
+          "contests"
+        ],
+        "summary": "Read one contest",
+        "operationId": "getContest",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/contestResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/contests/:id/entrants": {
+      "get": {
+        "tags": [
+          "contests"
+        ],
+        "summary": "List the entrants of a contest",
+        "operationId": "listEntrants",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "entrants": {
+                      "$ref": "#/components/schemas/MyEntrantView"
+                    }
+                  },
+                  "required": [
+                    "entrants"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/contests/:id/events": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Stream live contest updates over SSE",
+        "operationId": "contestEvents",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "text/event-stream": {}
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/contests/:id/my-entrant": {
+      "get": {
+        "tags": [
+          "contests"
+        ],
+        "summary": "The caller's own entrant in a contest, or null",
+        "operationId": "myEntrant",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/myEntrantResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/contests/:id/problems": {
+      "get": {
+        "tags": [
+          "contests"
+        ],
+        "summary": "List the problems of a contest, with their letters",
+        "operationId": "listContestProblems",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "problems": {
+                      "$ref": "#/components/schemas/ProblemView"
+                    }
+                  },
+                  "required": [
+                    "problems"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "contests"
+        ],
+        "summary": "Attach a problem from the bank to a contest",
+        "operationId": "addContestProblem",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/addContestProblemRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/contestProblemCreatedResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/contests/:id/problems/:letter": {
+      "get": {
+        "tags": [
+          "contests"
+        ],
+        "summary": "Read one problem's statement",
+        "operationId": "getContestProblem",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "letter",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/contests/:id/problems/:letter/submissions": {
+      "post": {
+        "tags": [
+          "submissions"
+        ],
+        "summary": "Submit source for judging",
+        "operationId": "submit",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "letter",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "language": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                },
+                "required": [
+                  "language",
+                  "source"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/submitAcceptedResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/contests/:id/register": {
+      "post": {
+        "tags": [
+          "contests"
+        ],
+        "summary": "Register the caller as an individual entrant",
+        "operationId": "registerIndividual",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/entrantCreatedResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/contests/:id/source-public": {
+      "patch": {
+        "tags": [
+          "contests"
+        ],
+        "summary": "Change whether sources become public after the contest",
+        "operationId": "setSourcePublic",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/setSourcePublicRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/contestResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/contests/:id/standings": {
+      "get": {
+        "tags": [
+          "contests"
+        ],
+        "summary": "Read the scoreboard",
+        "operationId": "standings",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "standings": {
+                      "$ref": "#/components/schemas/Standing"
+                    }
+                  },
+                  "required": [
+                    "standings"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/contests/:id/submissions": {
+      "get": {
+        "tags": [
+          "contests"
+        ],
+        "summary": "List submissions in a contest",
+        "operationId": "listSubmissions",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "before_seq",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "entrant_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "letter",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "submissions": {
+                      "$ref": "#/components/schemas/SubmissionPublic"
+                    }
+                  },
+                  "required": [
+                    "submissions"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/contests/:id/tasks": {
+      "get": {
+        "tags": [
+          "judging"
+        ],
+        "summary": "List judging tasks, for a contest admin",
+        "operationId": "listTasks",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "tasks": {
+                      "$ref": "#/components/schemas/TaskView"
+                    }
+                  },
+                  "required": [
+                    "tasks"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/contests/:id/teams": {
+      "post": {
+        "tags": [
+          "contests"
+        ],
+        "summary": "Create a team entrant",
+        "operationId": "createTeam",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/createTeamRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/entrantCreatedResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/entrants/:id/confirm": {
+      "post": {
+        "tags": [
+          "contests"
+        ],
+        "summary": "Accept a team invitation",
+        "operationId": "confirmInvite",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/okResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/entrants/:id/decision": {
+      "post": {
+        "tags": [
+          "contests"
+        ],
+        "summary": "Approve or reject a registration, for a contest admin",
+        "operationId": "decideReg",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/decideRegRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/okResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/entrants/:id/invite": {
+      "post": {
+        "tags": [
+          "contests"
+        ],
+        "summary": "Invite an account onto a team",
+        "operationId": "invite",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/inviteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/okResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/entrants/:id/submit-registration": {
+      "post": {
+        "tags": [
+          "contests"
+        ],
+        "summary": "Submit a team registration for review",
+        "operationId": "submitTeam",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/okResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/entrants/:id/withdraw": {
+      "post": {
+        "tags": [
+          "contests"
+        ],
+        "summary": "Withdraw an entrant",
+        "operationId": "withdraw",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/okResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/health": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Liveness probe",
+        "operationId": "func1",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/okResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/judge/files/:token": {
+      "get": {
+        "tags": [
+          "judging"
+        ],
+        "summary": "Download a judging artifact with a signed token",
+        "operationId": "judgeFile",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/octet-stream": {}
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/me": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "The signed-in account",
+        "operationId": "me",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/accountResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/me/organizations": {
+      "get": {
+        "tags": [
+          "organizations"
+        ],
+        "summary": "The organizations the caller belongs to, with their role",
+        "operationId": "myOrganizations",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "organizations": {
+                      "$ref": "#/components/schemas/MyOrganizationView"
+                    }
+                  },
+                  "required": [
+                    "organizations"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/nodes/:id/revoke": {
+      "post": {
+        "tags": [
+          "judging"
+        ],
+        "summary": "Revoke a judge node",
+        "operationId": "revokeNode",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AckView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/nodes/:id/rotate": {
+      "post": {
+        "tags": [
+          "judging"
+        ],
+        "summary": "Rotate a node credential",
+        "operationId": "rotateNode",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/organizations": {
+      "get": {
+        "tags": [
+          "organizations"
+        ],
+        "summary": "List every organization",
+        "operationId": "listOrganizations",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "organizations": {
+                      "$ref": "#/components/schemas/OrganizationView"
+                    }
+                  },
+                  "required": [
+                    "organizations"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "organizations"
+        ],
+        "summary": "Create an organization; the caller becomes its owner",
+        "operationId": "createOrg",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/createOrgRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/orgSummaryResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/organizations/:id": {
+      "get": {
+        "tags": [
+          "organizations"
+        ],
+        "summary": "Read one organization by id",
+        "operationId": "getOrg",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/orgSummaryResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/organizations/:id/contests": {
+      "get": {
+        "tags": [
+          "organizations"
+        ],
+        "summary": "List the contests an organization runs",
+        "operationId": "listOrgContests",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "contests": {
+                      "$ref": "#/components/schemas/contestResponse"
+                    }
+                  },
+                  "required": [
+                    "contests"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "organizations"
+        ],
+        "summary": "Create a contest inside an organization",
+        "operationId": "createContest",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/createContestRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/contestResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/organizations/:id/join": {
+      "post": {
+        "tags": [
+          "organizations"
+        ],
+        "summary": "Ask to join an organization",
+        "operationId": "joinOrg",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/okResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/organizations/:id/join-requests": {
+      "get": {
+        "tags": [
+          "organizations"
+        ],
+        "summary": "List pending join requests, for an organization manager",
+        "operationId": "listJoinRequests",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "join_requests": {
+                      "$ref": "#/components/schemas/JoinRequest"
+                    }
+                  },
+                  "required": [
+                    "join_requests"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/organizations/:id/join-requests/:requestId/decision": {
+      "post": {
+        "tags": [
+          "organizations"
+        ],
+        "summary": "Approve or reject a join request",
+        "operationId": "decideJoin",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/decideJoinRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/okResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/organizations/:id/members": {
+      "get": {
+        "tags": [
+          "organizations"
+        ],
+        "summary": "List the members of an organization",
+        "operationId": "listMembers",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "members": {
+                      "$ref": "#/components/schemas/Member"
+                    }
+                  },
+                  "required": [
+                    "members"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/organizations/:id/membership": {
+      "get": {
+        "tags": [
+          "organizations"
+        ],
+        "summary": "The caller's own membership, if any",
+        "operationId": "myMembership",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/membershipResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/organizations/:id/pools": {
+      "get": {
+        "tags": [
+          "organizations"
+        ],
+        "summary": "List the judge pools owned by an organization",
+        "operationId": "listPools",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "pools": {
+                      "$ref": "#/components/schemas/PoolView"
+                    }
+                  },
+                  "required": [
+                    "pools"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/organizations/:id/problems": {
+      "get": {
+        "tags": [
+          "organizations"
+        ],
+        "summary": "List the problem bank of an organization",
+        "operationId": "listOrgProblems",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "problems": {
+                      "$ref": "#/components/schemas/BankProblem"
+                    }
+                  },
+                  "required": [
+                    "problems"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/organizations/:id/problems/import": {
+      "post": {
+        "tags": [
+          "organizations"
+        ],
+        "summary": "Import a problem from a Hydro-style zip",
+        "operationId": "importProblem",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "slug": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "zip": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                },
+                "required": [
+                  "slug",
+                  "title",
+                  "zip"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/importResultResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/organizations/:id/routing": {
+      "get": {
+        "tags": [
+          "organizations"
+        ],
+        "summary": "Read the problem-kind to pool routing of an organization",
+        "operationId": "getRouting",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "entries": {
+                      "$ref": "#/components/schemas/RoutingEntry"
+                    }
+                  },
+                  "required": [
+                    "entries"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "organizations"
+        ],
+        "summary": "Replace the problem-kind to pool routing",
+        "operationId": "setRouting",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/setRoutingRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AckView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/pools": {
+      "post": {
+        "tags": [
+          "judging"
+        ],
+        "summary": "Create a judge pool",
+        "operationId": "createPool",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/createPoolRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/pools/:id/nodes": {
+      "get": {
+        "tags": [
+          "judging"
+        ],
+        "summary": "List the nodes in a pool",
+        "operationId": "listNodes",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "nodes": {
+                      "$ref": "#/components/schemas/NodeView"
+                    }
+                  },
+                  "required": [
+                    "nodes"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "judging"
+        ],
+        "summary": "Register a judge node in a pool",
+        "operationId": "registerNode",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/registerNodeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/problems/:id/revisions": {
+      "get": {
+        "tags": [
+          "contests"
+        ],
+        "summary": "List the revisions of a problem, newest first",
+        "operationId": "listProblemRevisions",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "revisions": {
+                      "$ref": "#/components/schemas/RevisionSummary"
+                    }
+                  },
+                  "required": [
+                    "revisions"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "contests"
+        ],
+        "summary": "Add a revision from a Hydro-style zip",
+        "operationId": "addRevision",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "zip": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                },
+                "required": [
+                  "zip"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/revisionCreatedResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/ready": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Readiness probe, reporting 503 while a dependency is unreachable",
+        "operationId": "ready",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/okResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rejudge-batches/:id/switch": {
+      "post": {
+        "tags": [
+          "judging"
+        ],
+        "summary": "Publish a finished rejudge batch",
+        "operationId": "switchBatch",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AckView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/submissions/:id": {
+      "get": {
+        "tags": [
+          "submissions"
+        ],
+        "summary": "Read one submission",
+        "operationId": "getSubmission",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmissionPublic"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/submissions/:id/source": {
+      "get": {
+        "tags": [
+          "submissions"
+        ],
+        "summary": "Download the submitted source",
+        "operationId": "getSource",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/octet-stream": {}
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/tasks/:id/redispatch": {
+      "post": {
+        "tags": [
+          "judging"
+        ],
+        "summary": "Re-queue a task that failed to schedule",
+        "operationId": "redispatch",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AckView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or the session is no longer valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any error, carrying the shared error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AckView": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ]
+      },
+      "AttemptView": {
+        "type": "object",
+        "properties": {
+          "dispatched_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finished_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "generation": {
+            "type": "integer"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "lease_until": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "node_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "pool_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "dispatched",
+              "succeeded",
+              "failed",
+              "invalidated"
+            ]
+          },
+          "system_fault": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "dispatched_at",
+          "finished_at",
+          "generation",
+          "id",
+          "lease_until",
+          "node_id",
+          "pool_id",
+          "state",
+          "system_fault"
+        ]
+      },
+      "BankProblem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "title"
+        ]
+      },
+      "CasePublic": {
+        "type": "object",
+        "properties": {
+          "case_id": {
+            "type": "string"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "wrong_answer",
+              "time_limit_exceeded",
+              "memory_limit_exceeded",
+              "runtime_error",
+              "compilation_error",
+              "system_error"
+            ]
+          }
+        },
+        "required": [
+          "case_id",
+          "verdict"
+        ]
+      },
+      "CredentialView": {
+        "type": "object",
+        "properties": {
+          "credential": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "credential"
+        ]
+      },
+      "EntrantMemberView": {
+        "type": "object",
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "confirmed": {
+            "type": "boolean"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "captain",
+              "member"
+            ]
+          }
+        },
+        "required": [
+          "account_id",
+          "confirmed",
+          "display_name",
+          "role"
+        ]
+      },
+      "ErrorBody": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Machine-readable failure kind; the message is for humans.",
+            "enum": [
+              "unauthorized",
+              "forbidden",
+              "not_found",
+              "conflict",
+              "invalid",
+              "unverified",
+              "gone",
+              "too_many",
+              "unavailable",
+              "internal",
+              "not_acceptable"
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ]
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorBody"
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "JoinRequest": {
+        "type": "object",
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "rejected"
+            ]
+          }
+        },
+        "required": [
+          "account_id",
+          "created_at",
+          "display_name",
+          "id",
+          "status"
+        ]
+      },
+      "Member": {
+        "type": "object",
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "owner",
+              "admin",
+              "member"
+            ]
+          }
+        },
+        "required": [
+          "account_id",
+          "display_name",
+          "role"
+        ]
+      },
+      "MyEntrantView": {
+        "type": "object",
+        "properties": {
+          "accepted_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "contest_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "individual",
+              "team"
+            ]
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EntrantMemberView"
+            }
+          },
+          "registered_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "roster_frozen_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "accepted",
+              "withdrawn",
+              "rejected"
+            ]
+          }
+        },
+        "required": [
+          "accepted_at",
+          "contest_id",
+          "display_name",
+          "id",
+          "kind",
+          "members",
+          "registered_at",
+          "roster_frozen_at",
+          "status"
+        ]
+      },
+      "MyOrganizationView": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "member": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "member",
+          "name",
+          "role",
+          "slug"
+        ]
+      },
+      "NodeView": {
+        "type": "object",
+        "properties": {
+          "advertised_profiles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "connected": {
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "last_heartbeat_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "max_slots": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pool_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revoked": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "advertised_profiles",
+          "connected",
+          "enabled",
+          "id",
+          "last_heartbeat_at",
+          "max_slots",
+          "name",
+          "pool_id",
+          "revoked"
+        ]
+      },
+      "OrganizationView": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug"
+        ]
+      },
+      "PoolView": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "system",
+              "organization"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "organization_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          }
+        },
+        "required": [
+          "enabled",
+          "id",
+          "kind",
+          "name",
+          "organization_id"
+        ]
+      },
+      "ProblemDetail": {
+        "type": "object",
+        "properties": {
+          "checker_kind": {
+            "type": "string",
+            "enum": [
+              "exact",
+              "token",
+              "testlib"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "batch",
+              "interactive"
+            ]
+          },
+          "letter": {
+            "type": "string"
+          },
+          "memory_limit_bytes": {
+            "type": "integer"
+          },
+          "problem_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "scoring_revision_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "statement_markdown": {
+            "type": "string",
+            "nullable": true
+          },
+          "subtasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProblemSubtask"
+            }
+          },
+          "target_revision_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "time_limit_ms": {
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "checker_kind",
+          "kind",
+          "letter",
+          "memory_limit_bytes",
+          "problem_id",
+          "scoring_revision_id",
+          "statement_markdown",
+          "subtasks",
+          "target_revision_id",
+          "time_limit_ms",
+          "title"
+        ]
+      },
+      "ProblemScore": {
+        "type": "object",
+        "properties": {
+          "effective_submission_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "failed_attempts_before_ac": {
+            "type": "integer"
+          },
+          "letter": {
+            "type": "string"
+          },
+          "penalty_minutes": {
+            "type": "integer"
+          },
+          "pending": {
+            "type": "boolean"
+          },
+          "problem_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "score": {
+            "type": "string",
+            "format": "decimal"
+          },
+          "solved": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "effective_submission_id",
+          "failed_attempts_before_ac",
+          "letter",
+          "penalty_minutes",
+          "pending",
+          "problem_id",
+          "score",
+          "solved"
+        ]
+      },
+      "ProblemSubtask": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "score": {
+            "type": "string",
+            "format": "decimal"
+          }
+        },
+        "required": [
+          "id",
+          "score"
+        ]
+      },
+      "ProblemView": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "letter": {
+            "type": "string"
+          },
+          "problem_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "scoring_revision_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "target_revision_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "letter"
+        ]
+      },
+      "RejudgeBatchView": {
+        "type": "object",
+        "properties": {
+          "batch_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "running",
+              "switched"
+            ]
+          }
+        },
+        "required": [
+          "batch_id",
+          "state"
+        ]
+      },
+      "RevisionSummary": {
+        "type": "object",
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revision_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision_n": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "created_at",
+          "revision_id",
+          "revision_n"
+        ]
+      },
+      "RoutingEntry": {
+        "type": "object",
+        "properties": {
+          "pool_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "priority": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "pool_id",
+          "priority"
+        ]
+      },
+      "Standing": {
+        "type": "object",
+        "properties": {
+          "display_name": {
+            "type": "string"
+          },
+          "entrant_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "penalty_minutes": {
+            "type": "integer"
+          },
+          "problems": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProblemScore"
+            }
+          },
+          "rank": {
+            "type": "integer"
+          },
+          "solved": {
+            "type": "integer"
+          },
+          "total_score": {
+            "type": "string",
+            "format": "decimal"
+          },
+          "unsettled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "display_name",
+          "entrant_id",
+          "penalty_minutes",
+          "problems",
+          "rank",
+          "solved",
+          "total_score",
+          "unsettled"
+        ]
+      },
+      "SubmissionPublic": {
+        "type": "object",
+        "properties": {
+          "cases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CasePublic"
+            }
+          },
+          "compile_failed": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "contest_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "entrant_display_name": {
+            "type": "string"
+          },
+          "entrant_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "feedback": {
+            "type": "string",
+            "description": "How much detail this viewer may see: nothing, the compile output, per-subtask scores, or everything including per-case results.",
+            "enum": [
+              "none",
+              "compile",
+              "score",
+              "full"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "language_id": {
+            "type": "string",
+            "enum": [
+              "cpp23",
+              "c17",
+              "c23"
+            ]
+          },
+          "not_effective": {
+            "type": "boolean"
+          },
+          "receive_seq": {
+            "type": "integer"
+          },
+          "received_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revision_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "score": {
+            "type": "string",
+            "format": "decimal",
+            "nullable": true
+          },
+          "submitter_account_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "subtasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SubtaskPublic"
+            }
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "wrong_answer",
+              "time_limit_exceeded",
+              "memory_limit_exceeded",
+              "runtime_error",
+              "compilation_error",
+              "system_error"
+            ]
+          }
+        },
+        "required": [
+          "contest_id",
+          "entrant_id",
+          "feedback",
+          "id",
+          "language_id",
+          "receive_seq",
+          "received_at",
+          "revision_id",
+          "submitter_account_id"
+        ]
+      },
+      "SubtaskPublic": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "score": {
+            "type": "string",
+            "format": "decimal"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "wrong_answer",
+              "time_limit_exceeded",
+              "memory_limit_exceeded",
+              "runtime_error",
+              "compilation_error",
+              "system_error"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "score",
+          "verdict"
+        ]
+      },
+      "TaskView": {
+        "type": "object",
+        "properties": {
+          "attempt": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AttemptView"
+              }
+            ],
+            "nullable": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "purpose": {
+            "type": "string",
+            "description": "Why the task exists: the original submission, or a rejudge that replaced it.",
+            "enum": [
+              "initial",
+              "rejudge"
+            ]
+          },
+          "revision_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending_schedule",
+              "dispatched",
+              "completed",
+              "awaiting_admin",
+              "scheduling_error"
+            ]
+          },
+          "submission_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "attempt",
+          "created_at",
+          "id",
+          "purpose",
+          "revision_id",
+          "state",
+          "submission_id"
+        ]
+      },
+      "accountResponse": {
+        "type": "object",
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "email_verified": {
+            "type": "boolean"
+          },
+          "site_admin": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "account_id",
+          "display_name",
+          "email",
+          "email_verified",
+          "site_admin"
+        ]
+      },
+      "addContestProblemRequest": {
+        "type": "object",
+        "properties": {
+          "letter": {
+            "type": "string"
+          },
+          "problem_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "letter",
+          "problem_id",
+          "revision_id"
+        ]
+      },
+      "contestProblemCreatedResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "letter": {
+            "type": "string"
+          },
+          "problem_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "id",
+          "letter",
+          "problem_id",
+          "revision_id"
+        ]
+      },
+      "contestResponse": {
+        "type": "object",
+        "properties": {
+          "allow_external": {
+            "type": "boolean"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "entry_mode": {
+            "type": "string",
+            "enum": [
+              "individual",
+              "team"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "organization_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "published_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "register_starts_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "rule": {
+            "type": "string",
+            "enum": [
+              "acm",
+              "oi",
+              "ioi"
+            ]
+          },
+          "slug": {
+            "type": "string"
+          },
+          "source_public_after": {
+            "type": "boolean"
+          },
+          "source_visibility_locked": {
+            "type": "boolean"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "allow_external",
+          "ends_at",
+          "entry_mode",
+          "id",
+          "organization_id",
+          "published_at",
+          "register_starts_at",
+          "rule",
+          "slug",
+          "source_public_after",
+          "source_visibility_locked",
+          "starts_at",
+          "title"
+        ]
+      },
+      "createContestRequest": {
+        "type": "object",
+        "properties": {
+          "acm_penalty_minutes": {
+            "type": "integer"
+          },
+          "allow_external": {
+            "type": "boolean"
+          },
+          "case_feedback": {
+            "type": "string"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "entry_mode": {
+            "type": "string"
+          },
+          "freeze_minutes_before_end": {
+            "type": "integer",
+            "nullable": true
+          },
+          "ioi_public_scoreboard": {
+            "type": "boolean"
+          },
+          "max_team_size": {
+            "type": "integer"
+          },
+          "register_starts_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "registration_requires_review": {
+            "type": "boolean"
+          },
+          "rule": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "source_public_after": {
+            "type": "boolean"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "acm_penalty_minutes",
+          "allow_external",
+          "case_feedback",
+          "ends_at",
+          "entry_mode",
+          "freeze_minutes_before_end",
+          "ioi_public_scoreboard",
+          "max_team_size",
+          "register_starts_at",
+          "registration_requires_review",
+          "rule",
+          "slug",
+          "source_public_after",
+          "starts_at",
+          "title"
+        ]
+      },
+      "createOrgRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "slug"
+        ]
+      },
+      "createPoolRequest": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "organization_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          }
+        },
+        "required": [
+          "kind",
+          "name",
+          "organization_id"
+        ]
+      },
+      "createTeamRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "decideJoinRequest": {
+        "type": "object",
+        "properties": {
+          "approve": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "approve"
+        ]
+      },
+      "decideRegRequest": {
+        "type": "object",
+        "properties": {
+          "approve": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "approve"
+        ]
+      },
+      "entrantCreatedResponse": {
+        "type": "object",
+        "properties": {
+          "entrant_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "accepted",
+              "withdrawn",
+              "rejected"
+            ]
+          }
+        },
+        "required": [
+          "entrant_id",
+          "status"
+        ]
+      },
+      "forgotPasswordRequest": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ]
+      },
+      "importResultResponse": {
+        "type": "object",
+        "properties": {
+          "problem_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision_n": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "problem_id",
+          "revision_id",
+          "revision_n"
+        ]
+      },
+      "inviteRequest": {
+        "type": "object",
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "account_id"
+        ]
+      },
+      "loginRequest": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ]
+      },
+      "membershipResponse": {
+        "type": "object",
+        "properties": {
+          "member": {
+            "type": "boolean"
+          },
+          "organization_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "owner",
+              "admin",
+              "member"
+            ]
+          }
+        },
+        "required": [
+          "member",
+          "organization_id",
+          "role"
+        ]
+      },
+      "myEntrantResponse": {
+        "type": "object",
+        "properties": {
+          "entrant": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MyEntrantView"
+              }
+            ],
+            "nullable": true
+          }
+        },
+        "required": [
+          "entrant"
+        ]
+      },
+      "okResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ]
+      },
+      "orgSummaryResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug"
+        ]
+      },
+      "registerNodeRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "registerRequest": {
+        "type": "object",
+        "properties": {
+          "display_name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "display_name",
+          "email",
+          "password"
+        ]
+      },
+      "rejudgeRequest": {
+        "type": "object",
+        "properties": {
+          "revision_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "revision_id"
+        ]
+      },
+      "resetPasswordRequest": {
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "password",
+          "token"
+        ]
+      },
+      "revisionCreatedResponse": {
+        "type": "object",
+        "properties": {
+          "revision_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision_n": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision_id",
+          "revision_n"
+        ]
+      },
+      "setRoutingRequest": {
+        "type": "object",
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoutingEntry"
+            }
+          }
+        },
+        "required": [
+          "entries"
+        ]
+      },
+      "setSourcePublicRequest": {
+        "type": "object",
+        "properties": {
+          "source_public_after": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "source_public_after"
+        ]
+      },
+      "submitAcceptedResponse": {
+        "type": "object",
+        "properties": {
+          "receive_seq": {
+            "type": "integer"
+          },
+          "received_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "submission_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "receive_seq",
+          "received_at",
+          "submission_id",
+          "task_id"
+        ]
+      },
+      "verifyEmailRequest": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ]
+      }
+    },
+    "securitySchemes": {
+      "csrfToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-CSRF-Token",
+        "description": "Must echo the readable ephyra_csrf cookie. Required on every unsafe method."
+      },
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "ephyra_session",
+        "description": "Session cookie. GET /api/auth/csrf first, then POST /api/auth/login."
+      }
+    }
+  }
+}

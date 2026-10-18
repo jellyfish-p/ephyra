@@ -21,7 +21,7 @@ func (a *API) authRoutes(r *gin.Engine) {
 
 func (a *API) csrfToken(c *gin.Context) {
 	if _, err := c.Cookie(csrfCookie); err == nil {
-		c.JSON(http.StatusOK, gin.H{"ok": true})
+		c.JSON(http.StatusOK, okResponse{OK: true})
 		return
 	}
 	tok, err := sec.RandomToken(32)
@@ -33,15 +33,17 @@ func (a *API) csrfToken(c *gin.Context) {
 		Name: csrfCookie, Value: tok, Path: "/", HttpOnly: false,
 		Secure: a.Secure, SameSite: http.SameSiteLaxMode, Expires: time.Now().Add(12 * time.Hour),
 	})
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	c.JSON(http.StatusOK, okResponse{OK: true})
+}
+
+type registerRequest struct {
+	Email       string `json:"email"`
+	Password    string `json:"password"`
+	DisplayName string `json:"display_name"`
 }
 
 func (a *API) register(c *gin.Context) {
-	var in struct {
-		Email       string `json:"email"`
-		Password    string `json:"password"`
-		DisplayName string `json:"display_name"`
-	}
+	var in registerRequest
 	if err := c.ShouldBindJSON(&in); err != nil {
 		writeErr(c, err)
 		return
@@ -50,14 +52,16 @@ func (a *API) register(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"ok": true})
+	c.JSON(http.StatusCreated, okResponse{OK: true})
+}
+
+type loginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
 }
 
 func (a *API) login(c *gin.Context) {
-	var in struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-	}
+	var in loginRequest
 	if err := c.ShouldBindJSON(&in); err != nil {
 		writeErr(c, err)
 		return
@@ -68,10 +72,10 @@ func (a *API) login(c *gin.Context) {
 		return
 	}
 	a.setSession(c, info)
-	c.JSON(http.StatusOK, gin.H{
-		"account_id": info.Account.ID, "email": info.Account.Email,
-		"display_name": info.Account.DisplayName, "email_verified": info.Account.EmailVerified,
-		"site_admin": info.Account.SiteAdmin,
+	c.JSON(http.StatusOK, accountResponse{
+		AccountID: info.Account.ID, Email: info.Account.Email,
+		DisplayName: info.Account.DisplayName, EmailVerified: info.Account.EmailVerified,
+		SiteAdmin: info.Account.SiteAdmin,
 	})
 }
 
@@ -79,13 +83,15 @@ func (a *API) logout(c *gin.Context) {
 	raw, _ := c.Cookie(sessionCookie)
 	_ = a.Identity.Logout(c.Request.Context(), raw)
 	a.clearSession(c)
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	c.JSON(http.StatusOK, okResponse{OK: true})
+}
+
+type verifyEmailRequest struct {
+	Token string `json:"token"`
 }
 
 func (a *API) verifyEmail(c *gin.Context) {
-	var in struct {
-		Token string `json:"token"`
-	}
+	var in verifyEmailRequest
 	if err := c.ShouldBindJSON(&in); err != nil {
 		writeErr(c, err)
 		return
@@ -94,26 +100,30 @@ func (a *API) verifyEmail(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	c.JSON(http.StatusOK, okResponse{OK: true})
+}
+
+type forgotPasswordRequest struct {
+	Email string `json:"email"`
 }
 
 func (a *API) forgot(c *gin.Context) {
-	var in struct {
-		Email string `json:"email"`
-	}
+	var in forgotPasswordRequest
 	if err := c.ShouldBindJSON(&in); err != nil {
 		writeErr(c, err)
 		return
 	}
 	_ = a.Identity.RequestPasswordReset(c.Request.Context(), in.Email, c.ClientIP())
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	c.JSON(http.StatusOK, okResponse{OK: true})
+}
+
+type resetPasswordRequest struct {
+	Token    string `json:"token"`
+	Password string `json:"password"`
 }
 
 func (a *API) reset(c *gin.Context) {
-	var in struct {
-		Token    string `json:"token"`
-		Password string `json:"password"`
-	}
+	var in resetPasswordRequest
 	if err := c.ShouldBindJSON(&in); err != nil {
 		writeErr(c, err)
 		return
@@ -122,7 +132,7 @@ func (a *API) reset(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	c.JSON(http.StatusOK, okResponse{OK: true})
 }
 
 func (a *API) me(c *gin.Context) {
@@ -130,8 +140,8 @@ func (a *API) me(c *gin.Context) {
 	if !ok {
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
-		"account_id": p.AccountID, "email": p.Email, "display_name": p.DisplayName,
-		"email_verified": p.EmailVerified, "site_admin": p.SiteAdmin,
+	c.JSON(http.StatusOK, accountResponse{
+		AccountID: p.AccountID, Email: p.Email, DisplayName: p.DisplayName,
+		EmailVerified: p.EmailVerified, SiteAdmin: p.SiteAdmin,
 	})
 }

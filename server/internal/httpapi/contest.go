@@ -35,6 +35,24 @@ func (a *API) contestRoutes(r *gin.Engine) {
 	r.POST("/api/problems/:id/revisions", a.addRevision)
 }
 
+type createContestRequest struct {
+	Slug                       string    `json:"slug"`
+	Title                      string    `json:"title"`
+	Rule                       string    `json:"rule"`
+	EntryMode                  string    `json:"entry_mode"`
+	StartsAt                   time.Time `json:"starts_at"`
+	EndsAt                     time.Time `json:"ends_at"`
+	RegisterStartsAt           time.Time `json:"register_starts_at"`
+	AllowExternal              bool      `json:"allow_external"`
+	RegistrationRequiresReview bool      `json:"registration_requires_review"`
+	MaxTeamSize                int       `json:"max_team_size"`
+	ACMPenaltyMinutes          int       `json:"acm_penalty_minutes"`
+	FreezeMinutesBeforeEnd     *int      `json:"freeze_minutes_before_end"`
+	IOIPublicScoreboard        bool      `json:"ioi_public_scoreboard"`
+	CaseFeedback               string    `json:"case_feedback"`
+	SourcePublicAfter          bool      `json:"source_public_after"`
+}
+
 func (a *API) createContest(c *gin.Context) {
 	p, ok := requireUser(c)
 	if !ok {
@@ -44,23 +62,7 @@ func (a *API) createContest(c *gin.Context) {
 	if !ok {
 		return
 	}
-	var in struct {
-		Slug                       string    `json:"slug"`
-		Title                      string    `json:"title"`
-		Rule                       string    `json:"rule"`
-		EntryMode                  string    `json:"entry_mode"`
-		StartsAt                   time.Time `json:"starts_at"`
-		EndsAt                     time.Time `json:"ends_at"`
-		RegisterStartsAt           time.Time `json:"register_starts_at"`
-		AllowExternal              bool      `json:"allow_external"`
-		RegistrationRequiresReview bool      `json:"registration_requires_review"`
-		MaxTeamSize                int       `json:"max_team_size"`
-		ACMPenaltyMinutes          int       `json:"acm_penalty_minutes"`
-		FreezeMinutesBeforeEnd     *int      `json:"freeze_minutes_before_end"`
-		IOIPublicScoreboard        bool      `json:"ioi_public_scoreboard"`
-		CaseFeedback               string    `json:"case_feedback"`
-		SourcePublicAfter          bool      `json:"source_public_after"`
-	}
+	var in createContestRequest
 	if err := c.ShouldBindJSON(&in); err != nil {
 		writeErr(c, err)
 		return
@@ -100,7 +102,7 @@ func (a *API) listOrgContests(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	out := make([]gin.H, 0, len(list))
+	out := make([]contestResponse, 0, len(list))
 	for _, ct := range list {
 		out = append(out, contestDTO(ct))
 	}
@@ -121,11 +123,9 @@ func (a *API) listOrgProblems(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	out := make([]gin.H, 0, len(list))
-	for _, pbm := range list {
-		out = append(out, gin.H{"id": pbm.ID, "slug": pbm.Slug, "title": pbm.Title})
-	}
-	c.JSON(http.StatusOK, gin.H{"problems": out})
+	// BankProblem already carries exactly these fields, so mapping it through a
+	// gin.H only served to erase the type the generator needs.
+	c.JSON(http.StatusOK, gin.H{"problems": list})
 }
 
 func (a *API) getContest(c *gin.Context) {
@@ -145,6 +145,10 @@ func (a *API) getContest(c *gin.Context) {
 	c.JSON(http.StatusOK, contestDTO(ct))
 }
 
+type setSourcePublicRequest struct {
+	SourcePublicAfter bool `json:"source_public_after"`
+}
+
 func (a *API) setSourcePublic(c *gin.Context) {
 	p, ok := requireUser(c)
 	if !ok {
@@ -154,9 +158,7 @@ func (a *API) setSourcePublic(c *gin.Context) {
 	if !ok {
 		return
 	}
-	var in struct {
-		SourcePublicAfter bool `json:"source_public_after"`
-	}
+	var in setSourcePublicRequest
 	if err := c.ShouldBindJSON(&in); err != nil {
 		writeErr(c, err)
 		return
@@ -165,7 +167,7 @@ func (a *API) setSourcePublic(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	c.JSON(http.StatusOK, okResponse{OK: true})
 }
 
 func (a *API) listContestProblems(c *gin.Context) {
@@ -226,9 +228,7 @@ func (a *API) myEntrant(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, struct {
-		Entrant *contest.MyEntrantView `json:"entrant"`
-	}{Entrant: out})
+	c.JSON(http.StatusOK, myEntrantResponse{Entrant: out})
 }
 
 func (a *API) listEntrants(c *gin.Context) {
@@ -248,14 +248,20 @@ func (a *API) listEntrants(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"entrants": ens})
 }
 
-func contestDTO(ct contest.View) gin.H {
-	return gin.H{
-		"id": ct.ID, "organization_id": ct.OrganizationID, "slug": ct.Slug, "title": ct.Title,
-		"rule": ct.Rule, "entry_mode": ct.EntryMode, "starts_at": ct.StartsAt, "ends_at": ct.EndsAt,
-		"register_starts_at": ct.RegisterStartsAt, "allow_external": ct.AllowExternal,
-		"source_public_after": ct.SourcePublicAfter, "source_visibility_locked": ct.SourceVisibilityLocked,
-		"published_at": ct.PublishedAt,
+func contestDTO(ct contest.View) contestResponse {
+	return contestResponse{
+		ID: ct.ID, OrganizationID: ct.OrganizationID, Slug: ct.Slug, Title: ct.Title,
+		Rule: ct.Rule, EntryMode: ct.EntryMode, StartsAt: ct.StartsAt, EndsAt: ct.EndsAt,
+		RegisterStartsAt: ct.RegisterStartsAt, AllowExternal: ct.AllowExternal,
+		SourcePublicAfter: ct.SourcePublicAfter, SourceVisibilityLocked: ct.SourceVisibilityLocked,
+		PublishedAt: ct.PublishedAt,
 	}
+}
+
+type addContestProblemRequest struct {
+	ProblemID  uuid.UUID `json:"problem_id"`
+	RevisionID uuid.UUID `json:"revision_id"`
+	Letter     string    `json:"letter"`
 }
 
 func (a *API) addContestProblem(c *gin.Context) {
@@ -267,11 +273,7 @@ func (a *API) addContestProblem(c *gin.Context) {
 	if !ok {
 		return
 	}
-	var in struct {
-		ProblemID  uuid.UUID `json:"problem_id"`
-		RevisionID uuid.UUID `json:"revision_id"`
-		Letter     string    `json:"letter"`
-	}
+	var in addContestProblemRequest
 	if err := c.ShouldBindJSON(&in); err != nil {
 		writeErr(c, err)
 		return
@@ -281,7 +283,9 @@ func (a *API) addContestProblem(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"id": cp.ID, "letter": cp.Letter, "problem_id": cp.ProblemID, "revision_id": cp.RevisionID})
+	c.JSON(http.StatusCreated, contestProblemCreatedResponse{
+		ID: cp.ID, Letter: cp.Letter, ProblemID: cp.ProblemID, RevisionID: cp.RevisionID,
+	})
 }
 
 func (a *API) registerIndividual(c *gin.Context) {
@@ -298,7 +302,11 @@ func (a *API) registerIndividual(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"entrant_id": en.ID, "status": en.Status})
+	c.JSON(http.StatusCreated, entrantCreatedResponse{EntrantID: en.ID, Status: en.Status})
+}
+
+type createTeamRequest struct {
+	Name string `json:"name"`
 }
 
 func (a *API) createTeam(c *gin.Context) {
@@ -310,9 +318,7 @@ func (a *API) createTeam(c *gin.Context) {
 	if !ok {
 		return
 	}
-	var in struct {
-		Name string `json:"name"`
-	}
+	var in createTeamRequest
 	if err := c.ShouldBindJSON(&in); err != nil {
 		writeErr(c, err)
 		return
@@ -322,7 +328,11 @@ func (a *API) createTeam(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"entrant_id": en.ID, "status": en.Status})
+	c.JSON(http.StatusCreated, entrantCreatedResponse{EntrantID: en.ID, Status: en.Status})
+}
+
+type inviteRequest struct {
+	AccountID uuid.UUID `json:"account_id"`
 }
 
 func (a *API) invite(c *gin.Context) {
@@ -334,9 +344,7 @@ func (a *API) invite(c *gin.Context) {
 	if !ok {
 		return
 	}
-	var in struct {
-		AccountID uuid.UUID `json:"account_id"`
-	}
+	var in inviteRequest
 	if err := c.ShouldBindJSON(&in); err != nil {
 		writeErr(c, err)
 		return
@@ -345,7 +353,7 @@ func (a *API) invite(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	c.JSON(http.StatusOK, okResponse{OK: true})
 }
 
 func (a *API) confirmInvite(c *gin.Context) {
@@ -361,7 +369,7 @@ func (a *API) confirmInvite(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	c.JSON(http.StatusOK, okResponse{OK: true})
 }
 
 func (a *API) submitTeam(c *gin.Context) {
@@ -377,7 +385,11 @@ func (a *API) submitTeam(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	c.JSON(http.StatusOK, okResponse{OK: true})
+}
+
+type decideRegRequest struct {
+	Approve bool `json:"approve"`
 }
 
 func (a *API) decideReg(c *gin.Context) {
@@ -389,9 +401,7 @@ func (a *API) decideReg(c *gin.Context) {
 	if !ok {
 		return
 	}
-	var in struct {
-		Approve bool `json:"approve"`
-	}
+	var in decideRegRequest
 	if err := c.ShouldBindJSON(&in); err != nil {
 		writeErr(c, err)
 		return
@@ -400,7 +410,7 @@ func (a *API) decideReg(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	c.JSON(http.StatusOK, okResponse{OK: true})
 }
 
 func (a *API) withdraw(c *gin.Context) {
@@ -416,7 +426,7 @@ func (a *API) withdraw(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	c.JSON(http.StatusOK, okResponse{OK: true})
 }
 
 func (a *API) standings(c *gin.Context) {
@@ -462,7 +472,7 @@ func (a *API) importProblem(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"problem_id": res.ProblemID, "revision_id": res.RevisionID, "revision_n": res.RevisionN})
+	c.JSON(http.StatusCreated, importResultResponse{ProblemID: res.ProblemID, RevisionID: res.RevisionID, RevisionN: res.RevisionN})
 }
 
 func (a *API) addRevision(c *gin.Context) {
@@ -495,7 +505,7 @@ func (a *API) addRevision(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"revision_id": rev.ID, "revision_n": rev.RevisionN})
+	c.JSON(http.StatusCreated, revisionCreatedResponse{RevisionID: rev.ID, RevisionN: rev.RevisionN})
 }
 
 func (a *API) problemRoutes(r *gin.Engine) {
