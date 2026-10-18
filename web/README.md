@@ -35,10 +35,11 @@ npm run format:check   # what CI runs; fails on any drift
 
 `.prettierrc.json` keeps the style this codebase already used — 100 columns,
 single quotes, no semicolons — rather than imposing a new one. `endOfLine` is
-pinned to `lf`, which matters here: the Go tree is checked out CRLF on Windows
-(`core.autocrlf=true`), and `.gitattributes` pins `web/**` to LF so the frontend
-does not inherit that. Without the pin, a Windows edit could silently add CRLF
-and the format check would fail for a reason that has nothing to do with style.
+pinned to `lf`, which matters here: text files are checked out CRLF on Windows
+(`core.autocrlf=true`), and `.gitattributes` pins the whole tree to LF so
+neither the frontend nor `gofmt` inherits that. Without the pin, a Windows edit
+could silently add CRLF and the format check would fail for a reason that has
+nothing to do with style.
 
 `.github/workflows/quality.yml` runs `gofmt` and `go vet` for the Go tree and
 `format:check` plus `nuxt typecheck` for the frontend. The Go tests stay in
@@ -173,6 +174,27 @@ with `status` and `code` (`useApi.ts`).
 Email delivery is out of scope for this app: the backend mails a bare token, not
 a link. `/verify-email` and `/reset-password` therefore accept the token by hand
 (they also honour `?token=`).
+
+## Generated API types
+
+The wire types are not written by hand. `server/docs/openapi.json` is generated
+from the Go router the backend actually serves, and `app/types/generated.ts` is
+generated from that document:
+
+```bash
+npm run api:generate   # rewrite app/types/generated.ts
+npm run api:check      # what CI runs; fails when either file is stale
+```
+
+`app/types/api.ts` is the only file that names those schemas —
+`export type Contest = S['contestResponse']` — so the app keeps readable names
+while the shapes stay tied to the handlers. Enums are derived the same way, so
+adding a verdict on the server turns into a type error at every `switch` that
+has not handled it. When the Go side changed, regenerate the spec first:
+
+```bash
+cd ../server && go run ./cmd/openapi
+```
 
 ## Endpoint contract used by this app
 

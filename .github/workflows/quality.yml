@@ -41,6 +41,11 @@ jobs:
       - name: go vet
         working-directory: server
         run: go vet ./...
+      # docs/openapi.json is what the frontend generates its types from, so a
+      # handler change that is not reflected here would ship stale types.
+      - name: openapi.json is up to date
+        working-directory: server
+        run: go run ./cmd/openapi -check
 
   web:
     name: Format and typecheck (web)
@@ -62,11 +67,14 @@ jobs:
       # both rather than stopping at whichever happens to finish first.
       - name: Check formatting and types
         run: |
+          npm run api:check &
+          p_api=$!
           npm run format:check &
           p_format=$!
           npm run typecheck &
           p_typecheck=$!
           fail=0
+          wait "$p_api" || { echo "::error::generated API types are stale (fix with: npm run api:generate)"; fail=1; }
           wait "$p_format" || { echo "::error::prettier found unformatted files (fix with: npm run format)"; fail=1; }
           wait "$p_typecheck" || { echo "::error::nuxt typecheck failed"; fail=1; }
           exit "$fail"
