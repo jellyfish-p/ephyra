@@ -188,7 +188,9 @@ func TestMyEntrantIncludesIndividualAndTeamRoster(t *testing.T) {
 	if en == nil || en.ID != member.EntrantID || en.ContestID != world.ContestID || en.Kind != "individual" || en.Status != "accepted" || en.AcceptedAt == nil || en.RosterFrozenAt != nil || len(en.Members) != 1 || en.Members[0].AccountID != world.AccountID || en.Members[0].Role != "captain" || !en.Members[0].Confirmed {
 		t.Fatalf("individual: %s", w.Body.String())
 	}
-	if en.RegisteredAt != world.Now.Add(-time.Hour) || *en.AcceptedAt != world.Now.Add(-time.Hour) {
+	// Compare instants, not representations: the driver hands back the server's
+	// location, so == would only hold when the test machine runs in UTC.
+	if !en.RegisteredAt.Equal(world.Now.Add(-time.Hour)) || !en.AcceptedAt.Equal(world.Now.Add(-time.Hour)) {
 		t.Fatalf("entrant timestamps: %+v", en)
 	}
 	// The roster name is joined from accounts, not copied from the entrant.
@@ -236,9 +238,17 @@ func TestContestSubmissionListFiltersAndHidesNonParticipantRows(t *testing.T) {
 	}
 	view, _, err := api.Scoring.ViewSubmission(t.Context(), world.Principal, second.SubmissionID)
 	mustReadDB(t, err)
+	// The list carries entrant_display_name so a board need not resolve one name
+	// per row; the single read does not. Everything visibility-controlled still
+	// has to match, so compare the row with that one field cleared.
+	row := response.Submissions[0]
+	if row.EntrantDisplayName == "" {
+		t.Fatal("list row must carry the entrant display name")
+	}
+	row.EntrantDisplayName = ""
 	wantJSON, err := json.Marshal(view)
 	mustReadDB(t, err)
-	gotJSON, err := json.Marshal(response.Submissions[0])
+	gotJSON, err := json.Marshal(row)
 	mustReadDB(t, err)
 	if string(gotJSON) != string(wantJSON) {
 		t.Fatalf("list projection differs from single read: %s vs %s", gotJSON, wantJSON)

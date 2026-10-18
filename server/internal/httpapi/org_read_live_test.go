@@ -9,12 +9,14 @@ import (
 	"github.com/google/uuid"
 	"github.com/jellyfish-p/ephyra/server/internal/access"
 	"github.com/jellyfish-p/ephyra/server/internal/clock"
+	"github.com/jellyfish-p/ephyra/server/internal/contest"
 	"github.com/jellyfish-p/ephyra/server/internal/domain"
 	"github.com/jellyfish-p/ephyra/server/internal/identity"
 	"github.com/jellyfish-p/ephyra/server/internal/judging"
 	"github.com/jellyfish-p/ephyra/server/internal/objectstore"
 	"github.com/jellyfish-p/ephyra/server/internal/persist"
 	"github.com/jellyfish-p/ephyra/server/internal/problem"
+	"github.com/jellyfish-p/ephyra/server/internal/submission"
 	"github.com/jellyfish-p/ephyra/server/internal/testutil"
 )
 
@@ -27,16 +29,23 @@ func decodeBody[T any](t *testing.T, body []byte) T {
 	return out
 }
 
+// organizationReadAPI builds a module set wide enough for every admin read view
+// these tests cover: the entrant list needs Contest, and the task view needs a
+// real submission to hang a task off, which needs Submission and its blobs.
 func organizationReadAPI(t *testing.T) (*API, testutil.ContestWorld) {
 	t.Helper()
 	db := testutil.Database(t)
 	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 	world := testutil.SeedRunnableContest(t, db, now)
 	fixed := clock.Fixed{T: now}
+	blobs := objectstore.NewMemory()
 	return &API{
-		Identity: &identity.Module{DB: db, Clock: fixed},
-		Problem:  &problem.Module{DB: db, Clock: fixed},
-		Judging:  judging.New(db, fixed, objectstore.NewMemory(), "http://localhost"),
+		Identity:   &identity.Module{DB: db, Clock: fixed},
+		Contest:    &contest.Module{DB: db, Clock: fixed},
+		Problem:    &problem.Module{DB: db, Clock: fixed},
+		Submission: &submission.Module{DB: db, Clock: fixed, Blobs: blobs},
+		Judging:    judging.New(db, fixed, blobs, "http://localhost"),
+		Blobs:      blobs,
 	}, world
 }
 

@@ -120,7 +120,17 @@ func TestListSubmissionsSharesSingleReadProjection(t *testing.T) {
 						}
 						return
 					}
-					if len(got) != 1 || !reflect.DeepEqual(got[0], want) {
+					if len(got) != 1 {
+						t.Fatalf("list projection %+v", got)
+					}
+					// The list carries entrant_display_name so a board need not resolve
+					// one name per row; the single read does not. Everything
+					// visibility-controlled still has to match.
+					if got[0].EntrantDisplayName == "" {
+						t.Fatal("list row must carry the entrant display name")
+					}
+					got[0].EntrantDisplayName = ""
+					if !reflect.DeepEqual(got[0], want) {
 						t.Fatalf("list projection %+v differs from individual %+v", got, want)
 					}
 					if !got[0].NotEffective || got[0].RevisionID != rev.ID {

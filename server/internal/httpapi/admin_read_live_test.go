@@ -83,9 +83,14 @@ func TestContestTaskReadsLive(t *testing.T) {
 	var cp persist.ContestProblem
 	mustReadDB(t, api.Identity.DB.First(&cp, "contest_id = ?", world.ContestID).Error)
 
+	// judge_tasks.submission_id is a foreign key, so the task needs a real
+	// submission behind it rather than a bare uuid.
+	sub, err := api.Submission.Submit(t.Context(), world.Principal, world.ContestID, "A", "cpp23", []byte("int main(){}"))
+	mustReadDB(t, err)
+
 	taskID, attemptID := uuid.New(), uuid.New()
 	mustReadDB(t, api.Identity.DB.Create(&persist.JudgeTask{
-		ID: taskID, SubmissionID: uuid.New(), ContestID: world.ContestID,
+		ID: taskID, SubmissionID: sub.SubmissionID, ContestID: world.ContestID,
 		JudgeDataRevisionID: cp.ScoringRevisionID, ExecutionProfileID: world.Profile,
 		Purpose: "initial", State: string(domain.TaskAwaitingAdmin), CreatedAt: now,
 	}).Error)
@@ -104,19 +109,36 @@ func TestContestTaskReadsLive(t *testing.T) {
 		Update("role", string(domain.OrgRoleAdmin)).Error)
 
 	r := orgReadRouter(api, world.Principal)
-	tasks := decodeBody[struct {
-		Tasks []judging.TaskView `json:"tasks"`
-	}](t, getContestRead(t, r, path, http.StatusOK).Body.Bytes())
 
-	if len(tasks.Tasks) != 1 {
-		t.Fatalf("expected the seeded task, got %+v", tasks.Tasks)
+	// Submitting enqueues a task of its own, so select this test's task by state
+	// rather than assuming the list holds exactly one row.
+	awaiting := decodeBody[struct {
+		Tasks []judging.TaskView `json:"tasks"`
+	}](t, getContestRead(t, r, path+"?state="+string(domain.TaskAwaitingAdmin), http.StatusOK).Body.Bytes())
+
+	if len(awaiting.Tasks) != 1 {
+		t.Fatalf("expected the awaiting_admin task, got %+v", awaiting.Tasks)
 	}
-	task := tasks.Tasks[0]
+	task := awaiting.Tasks[0]
 	if task.ID != taskID || task.State != string(domain.TaskAwaitingAdmin) {
 		t.Fatalf("task view %+v", task)
 	}
 	if task.Attempt == nil || task.Attempt.ID != attemptID || !task.Attempt.SystemFault {
 		t.Fatalf("attempt view %+v", task.Attempt)
+	}
+
+	// An unfiltered list still carries it.
+	all := decodeBody[struct {
+		Tasks []judging.TaskView `json:"tasks"`
+	}](t, getContestRead(t, r, path, http.StatusOK).Body.Bytes())
+	found := false
+	for _, tv := range all.Tasks {
+		if tv.ID == taskID {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("unfiltered list must still carry the task: %+v", all.Tasks)
 	}
 
 	// The state filter must narrow the list, and an unmatched state must be empty.

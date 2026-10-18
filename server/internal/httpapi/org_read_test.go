@@ -10,8 +10,10 @@ import (
 	"github.com/jellyfish-p/ephyra/server/internal/access"
 )
 
-// orgReadRouter mounts only the routes added for frontend reads, with a fixed
-// principal so authorization is exercised without a database.
+// orgReadRouter mounts the whole route set with a fixed principal, so
+// authorization is exercised without a database. Mounting everything rather
+// than a hand-picked subset is deliberate: a route missing from this list
+// answers 404, which reads exactly like a visibility bug.
 func orgReadRouter(api *API, p access.Principal) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
@@ -22,8 +24,10 @@ func orgReadRouter(api *API, p access.Principal) *gin.Engine {
 		c.Next()
 	})
 	api.orgRoutes(r)
-	api.judgeRoutes(r)
+	api.contestRoutes(r)
 	api.problemRoutes(r)
+	api.submitRoutes(r)
+	api.judgeRoutes(r)
 	return r
 }
 
