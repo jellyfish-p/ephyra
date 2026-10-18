@@ -49,16 +49,6 @@ const DIRECTIVES: Record<string, Verdict> = {
   system_error: 'system_error',
 }
 
-const VERDICT_LABELS: Record<Verdict, string> = {
-  accepted: 'accepted',
-  wrong_answer: 'wrong_answer',
-  time_limit_exceeded: 'time_limit_exceeded',
-  memory_limit_exceeded: 'memory_limit_exceeded',
-  runtime_error: 'runtime_error',
-  compilation_error: 'compilation_error',
-  system_error: 'system_error',
-}
-
 /** FNV-1a, so the same source always produces the same result. */
 export function fnv1a(text: string): number {
   let h = 0x811c9dc5
@@ -130,7 +120,7 @@ export function deriveResult(
     return {
       id: s.id,
       score: passed ? s.score : '0.00',
-      verdict: passed ? 'accepted' : VERDICT_LABELS[verdict],
+      verdict: passed ? 'accepted' : verdict,
     }
   })
 
@@ -139,7 +129,7 @@ export function deriveResult(
       ? []
       : Array.from({ length: 3 + (hash % 4) }, (_, i) => ({
           case_id: String(i + 1),
-          verdict: failAt === -1 || i < failAt ? 'accepted' : VERDICT_LABELS[verdict],
+          verdict: failAt === -1 || i < failAt ? 'accepted' : verdict,
         }))
 
   return {

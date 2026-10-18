@@ -124,8 +124,8 @@ export interface MockResult {
   compileFailed: boolean
   /** A system fault hides the result from non-admins. */
   systemFault: boolean
-  subtasks: { id: string; score: string; verdict: string }[]
-  cases: { case_id: string; verdict: string }[]
+  subtasks: { id: string; score: string; verdict: Verdict }[]
+  cases: { case_id: string; verdict: Verdict }[]
 }
 
 export interface MockSubmission {

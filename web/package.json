@@ -8,12 +8,14 @@
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
+    "api:generate": "node scripts/generate-api.mjs",
+    "api:check": "node scripts/generate-api.mjs --check",
     "format": "prettier --write --ignore-unknown .",
     "format:check": "prettier --check --cache --cache-strategy content --ignore-unknown .",
     "typecheck": "nuxt typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check": "npm run format:check && npm run typecheck"
+    "check": "npm run api:check && npm run format:check && npm run typecheck"
   },
   "dependencies": {
     "@iconify-json/lucide": "^1.2.145",
@@ -26,6 +28,7 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
+    "openapi-typescript": "^7.13.0",
     "prettier": "^3.9.10",
     "typescript": "^5.7.0",
     "vitest": "^5.0.5",

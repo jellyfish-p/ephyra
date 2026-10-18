@@ -3,6 +3,7 @@ import type {
   ContestRule,
   FeedbackGranularity,
   FeedbackLevel,
+  LanguageID,
   StandingRow,
   StandingProblem,
   Submission,
@@ -238,7 +239,7 @@ export interface SubmissionMeta {
   contestId: string
   entrantId: string
   submitterAccountId: string
-  languageId: string
+  languageId: LanguageID
   receivedAt: Date
   receiveSeq: number
   revisionId: string
