@@ -1,0 +1,72 @@
+name: quality
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # gofmt needs nothing but the toolchain, so this half never waits on npm.
+  server:
+    name: Format and vet (server)
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: |
+            go.work.sum
+            server/go.sum
+            protocol/go.sum
+      # Tracked files only: walking node_modules buys nothing, and a file that
+      # cannot be committed is not worth failing on. gofmt exits 0 even when it
+      # lists files, so the check is on the output rather than the status.
+      - name: gofmt
+        run: |
+          git ls-files -z '*.go' | xargs -0 -r gofmt -l > "$RUNNER_TEMP/unformatted.txt"
+          if [ -s "$RUNNER_TEMP/unformatted.txt" ]; then
+            echo "::error::These files are not gofmt-formatted:"
+            sed 's/^/  /' "$RUNNER_TEMP/unformatted.txt"
+            exit 1
+          fi
+      - name: go vet
+        working-directory: server
+        run: go vet ./...
+
+  web:
+    name: Format and typecheck (web)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
+      # Formatting and types fail independently, so run them together and report
+      # both rather than stopping at whichever happens to finish first.
+      - name: Check formatting and types
+        run: |
+          npm run format:check &
+          p_format=$!
+          npm run typecheck &
+          p_typecheck=$!
+          fail=0
+          wait "$p_format" || { echo "::error::prettier found unformatted files (fix with: npm run format)"; fail=1; }
+          wait "$p_typecheck" || { echo "::error::nuxt typecheck failed"; fail=1; }
+          exit "$fail"

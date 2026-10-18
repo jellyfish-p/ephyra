@@ -12,3 +12,6 @@ server/ephyra.exe
 .vscode/
 *.swp
 thumbs.db
+
+# Local agent scratch space, not part of the project.
+.pi/

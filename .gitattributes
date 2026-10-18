@@ -1,0 +1,4 @@
+# web/ is LF-only. On Windows this repo is checked out with core.autocrlf=true,
+# which gives the Go tree CRLF endings; prettier enforces LF in the frontend, so
+# pin it here rather than leaving its endings to the local checkout setting.
+web/** text eol=lf
