@@ -1,4 +1,15 @@
-# web/ is LF-only. On Windows this repo is checked out with core.autocrlf=true,
-# which gives the Go tree CRLF endings; prettier enforces LF in the frontend, so
-# pin it here rather than leaving its endings to the local checkout setting.
-web/** text eol=lf
+# Every text file is stored and checked out as LF.
+#
+# On Windows this repo is checked out with core.autocrlf=true, which rewrites
+# text files to CRLF in the working tree. That breaks three checks that all
+# assume LF, in ways that only show up on a Windows machine:
+#
+#   * gofmt treats CRLF as unformatted, so `gofmt -l` reports files that CI
+#     (a Linux checkout) considers clean.
+#   * `go run ./cmd/openapi -check` compares docs/openapi.json byte for byte
+#     against a freshly generated LF document.
+#   * prettier enforces endOfLine: lf in the frontend.
+#
+# Pinning it here makes a Windows checkout agree with CI. Every committed blob
+# is already LF, so this changes no file content.
+* text=auto eol=lf
