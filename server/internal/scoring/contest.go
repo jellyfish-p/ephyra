@@ -26,7 +26,10 @@ func ScoreContest(in ContestInput) []Standing {
 
 	out := make([]Standing, 0, len(in.Entrants))
 	for _, e := range in.Entrants {
-		st := Standing{EntrantID: e.ID, Problems: make([]ProblemScore, 0, len(in.Problems))}
+		st := Standing{
+			EntrantID: e.ID, DisplayName: e.DisplayName,
+			Problems: make([]ProblemScore, 0, len(in.Problems)),
+		}
 		for _, p := range in.Problems {
 			ps := scoreProblem(in, p, filterProblem(subsByEntrant[e.ID], p.ID))
 			st.Problems = append(st.Problems, ps)
@@ -62,7 +65,7 @@ func filterProblem(subs []Submission, problemID uuid.UUID) []Submission {
 }
 
 func scoreProblem(in ContestInput, p Problem, subs []Submission) ProblemScore {
-	ps := ProblemScore{ProblemID: p.ID}
+	ps := ProblemScore{ProblemID: p.ID, Letter: p.Letter}
 	switch in.Rule {
 	case domain.RuleACM:
 		return scoreACM(in, p, subs)
@@ -76,7 +79,7 @@ func scoreProblem(in ContestInput, p Problem, subs []Submission) ProblemScore {
 }
 
 func scoreACM(in ContestInput, p Problem, subs []Submission) ProblemScore {
-	ps := ProblemScore{ProblemID: p.ID}
+	ps := ProblemScore{ProblemID: p.ID, Letter: p.Letter}
 	fails := 0
 	for _, s := range subs {
 		if !s.NormalOn(p.RevisionID) {
@@ -111,7 +114,7 @@ func scoreACM(in ContestInput, p Problem, subs []Submission) ProblemScore {
 }
 
 func scoreOI(p Problem, subs []Submission) ProblemScore {
-	ps := ProblemScore{ProblemID: p.ID}
+	ps := ProblemScore{ProblemID: p.ID, Letter: p.Letter}
 	if len(subs) == 0 {
 		return ps
 	}
@@ -128,7 +131,7 @@ func scoreOI(p Problem, subs []Submission) ProblemScore {
 }
 
 func scoreIOI(p Problem, subs []Submission) ProblemScore {
-	ps := ProblemScore{ProblemID: p.ID}
+	ps := ProblemScore{ProblemID: p.ID, Letter: p.Letter}
 	var best *Submission
 	pending := false
 	for i := range subs {

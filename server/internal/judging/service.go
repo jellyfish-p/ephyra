@@ -54,7 +54,132 @@ func (m *Module) CreatePool(ctx context.Context, p access.Principal, kind domain
 	if err := m.DB.WithContext(ctx).Create(&pool).Error; err != nil {
 		return PoolView{}, err
 	}
-	return PoolView{ID: pool.ID, Kind: pool.Kind, Name: pool.Name}, nil
+	return poolViewOf(pool), nil
+}
+
+// ListPools returns the pools an organization manager may see: the
+// organization's own pools, plus system pools for a site admin.
+func (m *Module) ListPools(ctx context.Context, p access.Principal, orgID uuid.UUID) ([]PoolView, error) {
+	if err := m.requireManage(ctx, p, orgID); err != nil {
+		return nil, err
+	}
+	query := m.DB.WithContext(ctx).Where("organization_id = ?", orgID)
+	if p.SiteAdmin {
+		query = m.DB.WithContext(ctx).Where("organization_id = ? OR kind = ?", orgID, domain.PoolSystem)
+	}
+	var pools []persist.JudgePool
+	if err := query.Order("created_at").Find(&pools).Error; err != nil {
+		return nil, err
+	}
+	out := make([]PoolView, 0, len(pools))
+	for _, pool := range pools {
+		out = append(out, poolViewOf(pool))
+	}
+	return out, nil
+}
+
+// ListNodes returns the nodes of one pool after authorizing that pool.
+func (m *Module) ListNodes(ctx context.Context, p access.Principal, poolID uuid.UUID) ([]NodeView, error) {
+	var pool persist.JudgePool
+	if err := m.DB.WithContext(ctx).First(&pool, "id = ?", poolID).Error; err != nil {
+		return nil, apperr.New(apperr.NotFound, "pool not found")
+	}
+	if err := m.authorizePool(ctx, p, pool); err != nil {
+		return nil, err
+	}
+	var nodes []persist.JudgeNode
+	if err := m.DB.WithContext(ctx).Where("pool_id = ?", poolID).Order("created_at").Find(&nodes).Error; err != nil {
+		return nil, err
+	}
+	out := make([]NodeView, 0, len(nodes))
+	for _, node := range nodes {
+		out = append(out, nodeViewOf(node))
+	}
+	return out, nil
+}
+
+// Routing returns the organization's current routing policy entries.
+func (m *Module) Routing(ctx context.Context, p access.Principal, orgID uuid.UUID) ([]RoutingEntry, error) {
+	if err := m.requireManage(ctx, p, orgID); err != nil {
+		return nil, err
+	}
+	var ver persist.RoutingPolicyVersion
+	err := m.DB.WithContext(ctx).Where("organization_id = ?", orgID).
+		Order("version_n DESC").First(&ver).Error
+	if persist.IsNotFound(err) {
+		return []RoutingEntry{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var rows []persist.RoutingPolicyEntry
+	if err := m.DB.WithContext(ctx).Where("policy_version_id = ?", ver.ID).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]RoutingEntry, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, RoutingEntry{PoolID: row.PoolID, Priority: row.Priority})
+	}
+	return out, nil
+}
+
+// ListTasks returns a contest's judge tasks for an organization manager, each
+// with its latest attempt, so an administrator can find tasks whose node was
+// lost and redispatch them. Redispatch is never automatic.
+func (m *Module) ListTasks(ctx context.Context, p access.Principal, contestID uuid.UUID, state string, limit int) ([]TaskView, error) {
+	var c persist.Contest
+	if err := m.DB.WithContext(ctx).First(&c, "id = ?", contestID).Error; err != nil {
+		return nil, apperr.New(apperr.NotFound, "contest not found")
+	}
+	if err := m.requireManage(ctx, p, c.OrganizationID); err != nil {
+		return nil, err
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	limit = max(1, min(500, limit))
+	query := m.DB.WithContext(ctx).Where("contest_id = ?", contestID)
+	if state != "" {
+		query = query.Where("state = ?", state)
+	}
+	var tasks []persist.JudgeTask
+	if err := query.Order("created_at DESC").Limit(limit).Find(&tasks).Error; err != nil {
+		return nil, err
+	}
+	out := make([]TaskView, 0, len(tasks))
+	for _, task := range tasks {
+		view := TaskView{
+			ID: task.ID, SubmissionID: task.SubmissionID, State: task.State,
+			Purpose: task.Purpose, RevisionID: task.JudgeDataRevisionID, CreatedAt: task.CreatedAt,
+		}
+		var attempt persist.JudgingAttempt
+		if err := m.DB.WithContext(ctx).Where("task_id = ?", task.ID).
+			Order("generation DESC").First(&attempt).Error; err == nil {
+			view.Attempt = &AttemptView{
+				ID: attempt.ID, Generation: attempt.Generation, NodeID: attempt.NodeID,
+				PoolID: attempt.PoolID, State: attempt.State, DispatchedAt: attempt.DispatchedAt,
+				LeaseUntil: attempt.LeaseUntil, FinishedAt: attempt.FinishedAt,
+				SystemFault: attempt.SystemFault,
+			}
+		}
+		out = append(out, view)
+	}
+	return out, nil
+}
+
+func poolViewOf(pool persist.JudgePool) PoolView {
+	return PoolView{
+		ID: pool.ID, Kind: pool.Kind, OrganizationID: pool.OrganizationID,
+		Name: pool.Name, Enabled: pool.Enabled,
+	}
+}
+
+func nodeViewOf(node persist.JudgeNode) NodeView {
+	return NodeView{
+		ID: node.ID, PoolID: node.PoolID, Name: node.Name, Enabled: node.Enabled,
+		Connected: node.Connected, Revoked: node.RevokedAt != nil, MaxSlots: node.MaxSlots,
+		LastHeartbeatAt: node.LastHeartbeatAt, AdvertisedProfiles: []string(node.AdvertisedProfiles),
+	}
 }
 
 func (m *Module) RegisterNode(ctx context.Context, p access.Principal, poolID uuid.UUID, name string) (NodeRegisteredView, error) {
@@ -158,8 +283,8 @@ func (m *Module) SetRouting(ctx context.Context, p access.Principal, orgID uuid.
 }
 
 type RoutingEntry struct {
-	PoolID   uuid.UUID
-	Priority int
+	PoolID   uuid.UUID `json:"pool_id"`
+	Priority int       `json:"priority"`
 }
 
 func rejectHello(reason string) Admission {

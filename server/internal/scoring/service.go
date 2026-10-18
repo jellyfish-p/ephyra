@@ -138,6 +138,10 @@ func (m *Module) ViewSubmission(ctx context.Context, p access.Principal, submiss
 	if err != nil {
 		return SubmissionPublic{}, View{}, err
 	}
+	return m.projectSubmission(ctx, p, c, sub)
+}
+
+func (m *Module) projectSubmission(ctx context.Context, p access.Principal, c persist.Contest, sub persist.Submission) (SubmissionPublic, View, error) {
 	var cp persist.ContestProblem
 	if err := m.DB.WithContext(ctx).First(&cp, "id = ?", sub.ContestProblemID).Error; err != nil {
 		return SubmissionPublic{}, View{}, apperr.New(apperr.NotFound, "contest problem not found")
@@ -155,6 +159,80 @@ func (m *Module) ViewSubmission(ctx context.Context, p access.Principal, submiss
 		ReceivedAt: sub.ReceivedAt, ReceiveSeq: sub.ReceiveSeq, RevisionID: displayed,
 	}
 	return ProjectSubmission(meta, view, detail), view, nil
+}
+
+type SubmissionFilter struct {
+	EntrantID        *uuid.UUID
+	ContestProblemID *uuid.UUID
+	Limit            int
+	BeforeSeq        *int64
+}
+
+// ListSubmissions uses the same projection as individual reads and SSE. A row
+// without feedback rights is omitted entirely, including its identity metadata.
+func (m *Module) ListSubmissions(ctx context.Context, p access.Principal, contestID uuid.UUID, f SubmissionFilter) ([]SubmissionPublic, error) {
+	if p.Zero() {
+		return nil, apperr.New(apperr.Unauthorized, "not signed in")
+	}
+	c, err := m.contest(ctx, contestID)
+	if err != nil {
+		return nil, err
+	}
+	limit := f.Limit
+	if limit == 0 {
+		limit = 50
+	}
+	limit = max(1, min(200, limit))
+	// Entrant names label scoreboard-style rows. They are only attached to rows
+	// the viewer already has feedback rights to, so this reveals nothing beyond
+	// what the public board shows.
+	var ens []persist.Entrant
+	if err := m.DB.WithContext(ctx).Select("id", "display_name").Where("contest_id = ?", contestID).Find(&ens).Error; err != nil {
+		return nil, err
+	}
+	names := make(map[uuid.UUID]string, len(ens))
+	for _, e := range ens {
+		names[e.ID] = e.DisplayName
+	}
+	out := make([]SubmissionPublic, 0, limit)
+	before := f.BeforeSeq
+	// Apply the limit to visible rows, not candidates: hidden newer submissions
+	// must not prevent the viewer from paging through their own older work.
+	batchSize := max(50, limit)
+	for {
+		query := m.DB.WithContext(ctx).Where("contest_id = ?", contestID)
+		if f.EntrantID != nil {
+			query = query.Where("entrant_id = ?", *f.EntrantID)
+		}
+		if f.ContestProblemID != nil {
+			query = query.Where("contest_problem_id = ?", *f.ContestProblemID)
+		}
+		if before != nil {
+			query = query.Where("receive_seq < ?", *before)
+		}
+		var candidates []persist.Submission
+		if err := query.Order("receive_seq DESC").Limit(batchSize).Find(&candidates).Error; err != nil {
+			return nil, err
+		}
+		for _, sub := range candidates {
+			item, view, err := m.projectSubmission(ctx, p, c, sub)
+			if err != nil {
+				return nil, err
+			}
+			if ShouldEmit(view) {
+				item.EntrantDisplayName = names[item.EntrantID]
+				out = append(out, item)
+				if len(out) == limit {
+					return out, nil
+				}
+			}
+		}
+		if len(candidates) < batchSize {
+			return out, nil
+		}
+		seq := candidates[len(candidates)-1].ReceiveSeq
+		before = &seq
+	}
 }
 
 func (m *Module) WatchContest(ctx context.Context, contestID uuid.UUID) (map[uuid.UUID]string, error) {
@@ -254,12 +332,14 @@ func (m *Module) contest(ctx context.Context, id uuid.UUID) (persist.Contest, er
 
 func (m *Module) input(ctx context.Context, c persist.Contest) (ContestInput, error) {
 	var cps []persist.ContestProblem
-	if err := m.DB.WithContext(ctx).Where("contest_id = ?", c.ID).Find(&cps).Error; err != nil {
+	// Ordered by letter so the scoreboard columns line up with the contest's
+	// problem list, which is ordered the same way.
+	if err := m.DB.WithContext(ctx).Where("contest_id = ?", c.ID).Order("letter").Find(&cps).Error; err != nil {
 		return ContestInput{}, err
 	}
 	problems := make([]Problem, 0, len(cps))
 	for _, cp := range cps {
-		problems = append(problems, Problem{ID: cp.ProblemID, RevisionID: cp.ScoringRevisionID})
+		problems = append(problems, Problem{ID: cp.ProblemID, Letter: cp.Letter, RevisionID: cp.ScoringRevisionID})
 	}
 	var ens []persist.Entrant
 	if err := m.DB.WithContext(ctx).Where("contest_id = ? AND status = ?", c.ID, domain.EntrantAccepted).Find(&ens).Error; err != nil {
@@ -267,7 +347,7 @@ func (m *Module) input(ctx context.Context, c persist.Contest) (ContestInput, er
 	}
 	entrants := make([]Entrant, 0, len(ens))
 	for _, e := range ens {
-		entrants = append(entrants, Entrant{ID: e.ID})
+		entrants = append(entrants, Entrant{ID: e.ID, DisplayName: e.DisplayName})
 	}
 	var subs []persist.Submission
 	if err := m.DB.WithContext(ctx).Where("contest_id = ?", c.ID).Order("receive_seq").Find(&subs).Error; err != nil {

@@ -433,6 +433,7 @@ func (m *Module) ListProblems(ctx context.Context, p access.Principal, contestID
 		return nil, err
 	}
 	var rows []struct {
+		ID                uuid.UUID
 		Letter            string
 		Title             string
 		ProblemID         uuid.UUID
@@ -440,7 +441,7 @@ func (m *Module) ListProblems(ctx context.Context, p access.Principal, contestID
 		TargetRevisionID  uuid.UUID
 	}
 	err = m.DB.WithContext(ctx).Table("contest_problems AS cp").
-		Select("cp.letter, p.title, cp.problem_id, cp.scoring_revision_id, cp.target_revision_id").
+		Select("cp.id, cp.letter, p.title, cp.problem_id, cp.scoring_revision_id, cp.target_revision_id").
 		Joins("JOIN problems AS p ON p.id = cp.problem_id").
 		Where("cp.contest_id = ?", c.ID).
 		Order("cp.letter").
@@ -451,7 +452,7 @@ func (m *Module) ListProblems(ctx context.Context, p access.Principal, contestID
 	out := make([]ProblemView, 0, len(rows))
 	lettersOnly := ContestantLettersOnly(a)
 	for _, row := range rows {
-		pv := ProblemView{Letter: row.Letter}
+		pv := ProblemView{ID: row.ID, Letter: row.Letter}
 		if !lettersOnly {
 			pid, sid, tid := row.ProblemID, row.ScoringRevisionID, row.TargetRevisionID
 			pv.Title = row.Title

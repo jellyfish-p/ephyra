@@ -46,15 +46,19 @@ type SubtaskPublic struct {
 
 // SubmissionPublic is the HTTP/SSE payload. GORM models must not be serialized.
 type SubmissionPublic struct {
-	ID                 uuid.UUID       `json:"id"`
-	ContestID          uuid.UUID       `json:"contest_id"`
-	EntrantID          uuid.UUID       `json:"entrant_id"`
-	SubmitterAccountID uuid.UUID       `json:"submitter_account_id"`
-	LanguageID         string          `json:"language_id"`
-	ReceivedAt         time.Time       `json:"received_at"`
-	ReceiveSeq         int64           `json:"receive_seq"`
-	RevisionID         uuid.UUID       `json:"revision_id"`
-	Feedback           string          `json:"feedback"`
+	ID                 uuid.UUID `json:"id"`
+	ContestID          uuid.UUID `json:"contest_id"`
+	EntrantID          uuid.UUID `json:"entrant_id"`
+	SubmitterAccountID uuid.UUID `json:"submitter_account_id"`
+	LanguageID         string    `json:"language_id"`
+	ReceivedAt         time.Time `json:"received_at"`
+	ReceiveSeq         int64     `json:"receive_seq"`
+	RevisionID         uuid.UUID `json:"revision_id"`
+	Feedback           string    `json:"feedback"`
+	// EntrantDisplayName is populated by the contest submission list only, so a
+	// scoreboard-style list can label rows without a second lookup. The
+	// single-submission and SSE payloads leave it empty.
+	EntrantDisplayName string          `json:"entrant_display_name,omitempty"`
 	NotEffective       bool            `json:"not_effective,omitempty"`
 	CompileFailed      *bool           `json:"compile_failed,omitempty"`
 	Verdict            string          `json:"verdict,omitempty"`

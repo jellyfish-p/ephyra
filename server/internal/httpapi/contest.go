@@ -19,6 +19,9 @@ func (a *API) contestRoutes(r *gin.Engine) {
 	r.GET("/api/contests/:id", a.getContest)
 	r.PATCH("/api/contests/:id/source-public", a.setSourcePublic)
 	r.GET("/api/contests/:id/problems", a.listContestProblems)
+	r.GET("/api/contests/:id/problems/:letter", a.getContestProblem)
+	r.GET("/api/contests/:id/my-entrant", a.myEntrant)
+	r.GET("/api/contests/:id/entrants", a.listEntrants)
 	r.POST("/api/contests/:id/problems", a.addContestProblem)
 	r.POST("/api/contests/:id/register", a.registerIndividual)
 	r.POST("/api/contests/:id/teams", a.createTeam)
@@ -179,24 +182,70 @@ func (a *API) listContestProblems(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	out := make([]gin.H, 0, len(list))
-	for _, cp := range list {
-		item := gin.H{"letter": cp.Letter}
-		if cp.Title != "" {
-			item["title"] = cp.Title
-		}
-		if cp.ProblemID != nil {
-			item["problem_id"] = *cp.ProblemID
-		}
-		if cp.ScoringRevisionID != nil {
-			item["scoring_revision_id"] = *cp.ScoringRevisionID
-		}
-		if cp.TargetRevisionID != nil {
-			item["target_revision_id"] = *cp.TargetRevisionID
-		}
-		out = append(out, item)
+	// Encode the view directly so its json tags stay the single source of truth;
+	// hand-rolling gin.H here previously dropped `id`, which the rejudge flow needs.
+	c.JSON(http.StatusOK, gin.H{"problems": list})
+}
+
+func (a *API) getContestProblem(c *gin.Context) {
+	p, ok := requireUser(c)
+	if !ok {
+		return
 	}
-	c.JSON(http.StatusOK, gin.H{"problems": out})
+	id, ok := parseUUID(c, "id")
+	if !ok {
+		return
+	}
+	if _, err := a.Contest.Get(c.Request.Context(), p, id); err != nil {
+		writeErr(c, err)
+		return
+	}
+	out, err := a.Contest.GetProblemDetail(c.Request.Context(), id, c.Param("letter"), a.Blobs)
+	if err != nil {
+		writeErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, out)
+}
+
+func (a *API) myEntrant(c *gin.Context) {
+	p, ok := requireUser(c)
+	if !ok {
+		return
+	}
+	id, ok := parseUUID(c, "id")
+	if !ok {
+		return
+	}
+	if _, err := a.Contest.Get(c.Request.Context(), p, id); err != nil {
+		writeErr(c, err)
+		return
+	}
+	out, err := a.Contest.MyEntrant(c.Request.Context(), p, id)
+	if err != nil {
+		writeErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, struct {
+		Entrant *contest.MyEntrantView `json:"entrant"`
+	}{Entrant: out})
+}
+
+func (a *API) listEntrants(c *gin.Context) {
+	p, ok := requireUser(c)
+	if !ok {
+		return
+	}
+	id, ok := parseUUID(c, "id")
+	if !ok {
+		return
+	}
+	ens, err := a.Contest.ListEntrants(c.Request.Context(), p, id, c.Query("status"))
+	if err != nil {
+		writeErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"entrants": ens})
 }
 
 func contestDTO(ct contest.View) gin.H {
@@ -449,4 +498,23 @@ func (a *API) addRevision(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"revision_id": rev.ID, "revision_n": rev.RevisionN})
 }
 
-func (a *API) problemRoutes(r *gin.Engine) {}
+func (a *API) problemRoutes(r *gin.Engine) {
+	r.GET("/api/problems/:id/revisions", a.listProblemRevisions)
+}
+
+func (a *API) listProblemRevisions(c *gin.Context) {
+	p, ok := requireUser(c)
+	if !ok {
+		return
+	}
+	id, ok := parseUUID(c, "id")
+	if !ok {
+		return
+	}
+	revs, err := a.Problem.ListRevisions(c.Request.Context(), p, id)
+	if err != nil {
+		writeErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"revisions": revs})
+}

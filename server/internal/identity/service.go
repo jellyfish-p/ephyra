@@ -343,6 +343,48 @@ func (m *Module) Organization(ctx context.Context, id uuid.UUID) (OrganizationVi
 	return OrganizationView{ID: org.ID, Slug: org.Slug, Name: org.Name}, nil
 }
 
+// ListOrganizations returns every organization on the site. Knowing that an
+// organization exists grants no access to its problems, contests, or roster.
+func (m *Module) ListOrganizations(ctx context.Context, p access.Principal) ([]OrganizationView, error) {
+	if p.Zero() {
+		return nil, apperr.New(apperr.Unauthorized, "not signed in")
+	}
+	var orgs []persist.Organization
+	if err := m.DB.WithContext(ctx).Order("slug").Find(&orgs).Error; err != nil {
+		return nil, err
+	}
+	out := make([]OrganizationView, 0, len(orgs))
+	for _, org := range orgs {
+		out = append(out, OrganizationView{ID: org.ID, Slug: org.Slug, Name: org.Name})
+	}
+	return out, nil
+}
+
+// MyOrganizations returns the account's own memberships with the role held in
+// each organization. Membership never extends to another organization.
+func (m *Module) MyOrganizations(ctx context.Context, p access.Principal) ([]MyOrganizationView, error) {
+	if p.Zero() {
+		return nil, apperr.New(apperr.Unauthorized, "not signed in")
+	}
+	var rows []MyOrganizationView
+	err := m.DB.WithContext(ctx).Table("organization_memberships AS m").
+		Select("o.id, o.slug, o.name, m.role").
+		Joins("JOIN organizations AS o ON o.id = m.organization_id").
+		Where("m.account_id = ?", p.AccountID).
+		Order("o.slug").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	if rows == nil {
+		rows = []MyOrganizationView{}
+	}
+	for i := range rows {
+		rows[i].Member = true
+	}
+	return rows, nil
+}
+
 func (m *Module) BootstrapAdmin(ctx context.Context, email, password string) error {
 	if email == "" || password == "" {
 		return nil

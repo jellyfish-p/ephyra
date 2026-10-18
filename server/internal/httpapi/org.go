@@ -9,6 +9,8 @@ import (
 
 func (a *API) orgRoutes(r *gin.Engine) {
 	r.POST("/api/organizations", a.createOrg)
+	r.GET("/api/organizations", a.listOrganizations)
+	r.GET("/api/me/organizations", a.myOrganizations)
 	r.GET("/api/organizations/:id", a.getOrg)
 	r.POST("/api/organizations/:id/join", a.joinOrg)
 	r.GET("/api/organizations/:id/members", a.listMembers)
@@ -37,6 +39,32 @@ func (a *API) createOrg(c *gin.Context) {
 	}
 	_ = a.Judging.EnsureDefaultRouting(c.Request.Context(), org.ID)
 	c.JSON(http.StatusCreated, gin.H{"id": org.ID, "slug": org.Slug, "name": org.Name})
+}
+
+func (a *API) listOrganizations(c *gin.Context) {
+	p, ok := requireUser(c)
+	if !ok {
+		return
+	}
+	orgs, err := a.Identity.ListOrganizations(c.Request.Context(), p)
+	if err != nil {
+		writeErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"organizations": orgs})
+}
+
+func (a *API) myOrganizations(c *gin.Context) {
+	p, ok := requireUser(c)
+	if !ok {
+		return
+	}
+	orgs, err := a.Identity.MyOrganizations(c.Request.Context(), p)
+	if err != nil {
+		writeErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"organizations": orgs})
 }
 
 func (a *API) getOrg(c *gin.Context) {

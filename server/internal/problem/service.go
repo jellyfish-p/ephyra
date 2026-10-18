@@ -151,6 +151,28 @@ func (m *Module) putBlob(ctx context.Context, tx *gorm.DB, data []byte, ctype st
 	return obj, nil
 }
 
+// ListRevisions returns a problem's revisions newest first, so an organization
+// manager can pick the version a contest pins.
+func (m *Module) ListRevisions(ctx context.Context, p access.Principal, problemID uuid.UUID) ([]RevisionSummary, error) {
+	var prob persist.Problem
+	if err := m.DB.WithContext(ctx).First(&prob, "id = ?", problemID).Error; err != nil {
+		return nil, apperr.New(apperr.NotFound, "problem not found")
+	}
+	if err := m.requireManage(ctx, p, prob.OrganizationID); err != nil {
+		return nil, err
+	}
+	var revs []persist.JudgeDataRevision
+	if err := m.DB.WithContext(ctx).Where("problem_id = ?", problemID).
+		Order("revision_n DESC").Find(&revs).Error; err != nil {
+		return nil, err
+	}
+	out := make([]RevisionSummary, 0, len(revs))
+	for _, rev := range revs {
+		out = append(out, RevisionSummary{RevisionID: rev.ID, RevisionN: rev.RevisionN, CreatedAt: rev.CreatedAt})
+	}
+	return out, nil
+}
+
 func (m *Module) requireManage(ctx context.Context, p access.Principal, orgID uuid.UUID) error {
 	if p.SiteAdmin {
 		return identity.AllowManageOrg(p, false, "")

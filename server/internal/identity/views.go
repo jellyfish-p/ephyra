@@ -20,6 +20,15 @@ type OrganizationView struct {
 	Name string    `json:"name"`
 }
 
+// MyOrganizationView is an organization as seen from one account's memberships.
+type MyOrganizationView struct {
+	ID     uuid.UUID `json:"id"`
+	Slug   string    `json:"slug"`
+	Name   string    `json:"name"`
+	Role   string    `json:"role"`
+	Member bool      `json:"member"`
+}
+
 type Member struct {
 	AccountID   uuid.UUID `json:"account_id"`
 	DisplayName string    `json:"display_name"`
